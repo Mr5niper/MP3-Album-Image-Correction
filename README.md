@@ -7,7 +7,9 @@ This Python script scans through subfolders of a selected directory, identifies 
 - Uses ffmpeg to re-embed resized artwork without re-encoding audio.
 - Logs all operations with timestamps.
 - Skips files with no embedded artwork or already optimized images.
+
 🛠️ Requirements
+
 - Python 3.7+
 - ffmpeg (must be installed and accessible via system PATH)
 

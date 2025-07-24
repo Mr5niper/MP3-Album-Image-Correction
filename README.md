@@ -1,4 +1,5 @@
 🎵 MP3 Album Art Resizer
+
 This Python script scans through subfolders of a selected directory, identifies MP3 files with embedded album art, and resizes the artwork to a maximum dimension (default: 500px). It also converts PNG covers to JPEG for better compatibility and consistency.
 
 📦 Features

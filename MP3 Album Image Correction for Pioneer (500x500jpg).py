@@ -42,6 +42,11 @@ from io import BytesIO
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+# On Windows, a --windowed (no-console) build would otherwise flash a black
+# console window for every ffmpeg call. CREATE_NO_WINDOW suppresses that.
+# On macOS/Linux this flag doesn't exist, so it stays 0 (a harmless no-op).
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
+
 # ----------------------------------------------------------------------------
 # Optional / graceful dependency handling
 # ----------------------------------------------------------------------------
@@ -151,6 +156,7 @@ def replace_album_art(file_path, image_data, keep_backup=False):
         result = subprocess.run(
             cmd, capture_output=True, text=True,
             encoding="utf-8", errors="replace",
+            creationflags=_NO_WINDOW,
         )
         if result.returncode != 0:
             return False, f"ffmpeg failed: {result.stderr.strip()[:400]}"

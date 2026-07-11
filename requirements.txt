@@ -1,3 +1,16 @@
-mutagen
-pillow
-tkinterdnd2   ; python_version >= "3.7"   # optional: enables drag-and-drop
+# Build-time and runtime requirements for MP3 Album Image Correction.
+#
+# Versions are frozen to a known-good build on Python 3.13.12 (Windows).
+# The app needs Pillow and mutagen at runtime; tkinterdnd2 enables the
+# drag-and-drop surface. PyInstaller (and its hooks) are only needed to
+# build the .exe. ffmpeg is a separate external program and must be on
+# PATH; it is not a Python package and is not installed by pip.
+
+# ---- Runtime dependencies ----
+pillow==12.3.0
+mutagen==1.48.1
+tkinterdnd2==0.6.2
+
+# ---- Build-time only (PyInstaller) ----
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6

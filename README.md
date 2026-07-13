@@ -2,7 +2,7 @@ MP3 Album Art Corrector (GUI)
 
 A desktop app that resizes embedded MP3 album art to a max size (default 500px)
 and converts PNG covers to JPEG so they show up correctly on Pioneer CDJ gear
-and in rekordbox. It's a GUI version of the original command-line script.
+and in rekordbox.
 
 
 Features
@@ -82,14 +82,20 @@ icon bundled, version info embedded).
 
 Notes
 
+- Every run writes a timestamped log to a "logs" folder created next to the
+  app (for the built exe, next to the .exe; when run as a script, next to the
+  script). Each log lists the options used, a line per file (updated / skipped
+  / failed), and a summary with counts and elapsed time. If that folder can't
+  be written (for example the app is in Program Files), logs fall back to a
+  per-user location so logging still works. You can also still use File >
+  Export log to save a copy wherever you want.
 - The app changes files in place. The audio is copied straight through and is
   never re-encoded, so sound quality is untouched. Only the artwork gets
   resized or converted. Turn on "Keep .bak backup" if you want a safety copy.
-- Only the first embedded image in each file is processed. This matches the
-  original script.
+- Only the first embedded image in each file is processed.
 
 
 License
 
-MIT License for this app. Based on the original script by Mr5niper. See the
-LICENSE file. Bundled ffmpeg is licensed separately under the LGPL; see NOTICE.
+MIT License. Created by Mr5niper. See the LICENSE file. Bundled ffmpeg is
+licensed separately under the LGPL; see NOTICE.

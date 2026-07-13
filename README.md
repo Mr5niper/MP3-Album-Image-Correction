@@ -1,66 +1,110 @@
-🎵 MP3 Album Art Resizer
+MP3 Album Art Corrector (GUI)
 
-This Python script scans through subfolders of a selected directory, identifies MP3 files with embedded album art, and resizes the artwork to a maximum dimension (default: 500px). It also converts PNG covers to JPEG for better compatibility and consistency.
+A desktop app that resizes embedded MP3 album art to a max size (default 500px)
+and converts PNG covers to JPEG so they show up correctly on Pioneer CDJ gear
+and in rekordbox.
 
-📦 Features
-- Automatically detects and resizes embedded album art in MP3 files.
-- Converts PNG images to JPEG.
-- Uses ffmpeg to re-embed resized artwork without re-encoding audio.
-- Logs all operations with timestamps.
-- Skips files with no embedded artwork or already optimized images.
 
-🛠️ Requirements
+Features
 
-- Python 3.7+
-- ffmpeg (must be installed and accessible via system PATH)
+- Drag and drop MP3 files or whole folders onto the window (needs tkinterdnd2,
+  see below). If that package isn't installed, the app still works, you just
+  use the buttons instead.
+- Add Files and Add Folder buttons, plus paste file paths with Ctrl+V.
+- A queue list that shows each file's status: queued, working, passed,
+  skipped, or failed.
+- Right-click a row to open its folder or copy its path. Double-click opens
+  the folder.
+- Options:
+  - Max size in pixels (default 500)
+  - JPEG quality slider (50 to 100)
+  - Force PNG to JPEG on/off
+  - Scan subfolders on/off
+  - Keep a .bak backup of every file it changes
+- Progress bar and a running count of updated / skipped / failed.
+- Cancel button to stop a run partway through.
+- Export the results to a .log or .txt file.
+- Checks for ffmpeg, Pillow, and mutagen on startup and tells you if
+  something is missing instead of crashing.
 
-    Python Dependencies
-Install required packages using pip:
 
-        pip install mutagen pillow
+ffmpeg
 
-🚀 Usage
+The app uses ffmpeg to re-embed the artwork. At runtime it looks for ffmpeg in
+two places, in this order:
 
-1.	Run the script:
+  1. A bundled copy at bin\ffmpeg.exe next to the app (the built .exe ships
+     with this).
+  2. ffmpeg on your system PATH (used when you run the .py script directly and
+     have ffmpeg installed).
 
-2.	A folder selection dialog will appear. Choose the root folder containing subfolders with MP3 files.
+So the built .exe is self-contained and needs nothing installed. If you run the
+raw Python script instead, either drop an ffmpeg.exe in a bin folder next to it
+or have ffmpeg on your PATH.
 
-3.	The script will:
+The build gets ffmpeg automatically: if bin\ffmpeg.exe is missing, BUILD_EXE.bat
+downloads the current LGPL build from BtbN and extracts ffmpeg.exe into bin.
+Because BtbN's "latest" always serves the newest build, a fresh build may get a
+newer ffmpeg than the one this project was tested with; the build prints a
+warning when that happens but still continues. Only an LGPL build is used, so
+the result stays redistributable. See the NOTICE file for the tested version
+and the licensing terms.
 
-    -    Traverse all subdirectories.
 
-    -    Resize and convert album art where needed.
+Running the Python script
 
-    -    Log results to a timestamped .log file.
+- Python 3.13.12 (the build is pinned to this version)
+- Python packages:
 
-📁 Log Output
+    pip install mutagen pillow tkinterdnd2
 
-A log file named like resize_album_art_YYYY-MM-DD_HH-MM-SS.log will be created in the script's directory. It includes:
+  tkinterdnd2 is optional. It's only needed for drag and drop. Everything else
+  works without it.
 
--    Files processed
-    
--    Successes and failures
+- ffmpeg available (see the ffmpeg section above)
 
--    Summary statistics
+Then run:
 
-🧪 Example
-Summary:
-  
--    Files scanned: 120
-  
--    Successfully updated: 45
-  
--    Skipped (no resize needed): 70
-  
--    Failed: 5
+    python "MP3 Album Image Correction for Pioneer (500x500jpg).py"
 
-⚠️ Notes
+Drag in some MP3s or folders (or use Add Files / Add Folder), change any options
+you want, and click Process.
 
-This script modifies files in place. Consider backing up your MP3s before running.
-    
-Only the first embedded image is processed per file.
-    
-Requires write permissions in the target directories.
 
-📄 License
-MIT License
+Building the .exe
+
+The build produces a single self-contained .exe with ffmpeg bundled inside.
+
+1. Install Python 3.13.12 and add it to PATH.
+2. ffmpeg: if you already have a tested bin\ffmpeg.exe, leave it in place and
+   the build uses it. Otherwise the build downloads the current LGPL build from
+   BtbN automatically. (It uses an LGPL build so the release stays
+   redistributable; see NOTICE.)
+3. Optional: put an icon.ico next to BUILD_EXE.bat to set the app icon.
+4. Double-click BUILD_EXE.bat.
+
+The finished .exe lands in the dist folder. The build script creates a venv,
+installs the pinned dependencies from requirements.txt, ensures ffmpeg is in
+bin, and runs PyInstaller with the right options (windowed, tkinter and
+tkinterdnd2 collected, ffmpeg and icon bundled, version info embedded).
+
+
+Notes
+
+- Every run writes a timestamped log to a "logs" folder created next to the
+  app (for the built exe, next to the .exe; when run as a script, next to the
+  script). Each log lists the options used, a line per file (updated / skipped
+  / failed), and a summary with counts and elapsed time. If that folder can't
+  be written (for example the app is in Program Files), logs fall back to a
+  per-user location so logging still works. You can also still use File >
+  Export log to save a copy wherever you want.
+- The app changes files in place. The audio is copied straight through and is
+  never re-encoded, so sound quality is untouched. Only the artwork gets
+  resized or converted. Turn on "Keep .bak backup" if you want a safety copy.
+- Only the first embedded image in each file is processed.
+
+
+License
+
+MIT License. Created by Mr5niper. See the LICENSE file. Bundled ffmpeg is
+licensed separately under the LGPL; see NOTICE.

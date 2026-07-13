@@ -1,0 +1,65 @@
+THIRD-PARTY NOTICES
+===================
+
+This application bundles FFmpeg.
+
+This software uses libraries from the FFmpeg project under the LGPLv2.1.
+FFmpeg is licensed under the GNU Lesser General Public License, version 2.1
+or later. The FFmpeg source code can be obtained from:
+
+    https://ffmpeg.org/
+
+IMPORTANT - which FFmpeg build to bundle
+----------------------------------------
+Only bundle an LGPL build of ffmpeg.exe. Do NOT bundle a build compiled with
+--enable-gpl (for example builds that include x264/x265) or with
+--enable-nonfree, because:
+
+  * A GPL build would require this entire application to be released under the
+    GPL.
+  * A "nonfree" build cannot be legally redistributed at all.
+
+This app only stream-copies audio and embeds a JPEG cover (ffmpeg -c copy). It
+does not encode audio or video, so a minimal LGPL build is sufficient.
+
+How this project obtains ffmpeg
+-------------------------------
+The build script bundles ffmpeg as follows:
+  - If bin\ffmpeg.exe already exists, it is used as-is.
+  - Otherwise the build downloads the current LGPL "latest" Windows build from
+    the BtbN FFmpeg-Builds project and extracts ffmpeg.exe into bin\.
+
+The BtbN "latest" URL always serves the newest build, so anyone building this
+project from scratch may receive a NEWER ffmpeg than the one recorded below.
+The build warns on the console when the downloaded build's SHA-256 does not
+match the tested value. This is expected and allowed under the LGPL; it only
+affects which exact version you are then responsible for attributing.
+
+Tested / officially shipped FFmpeg build
+-----------------------------------------
+The maintainer's official release binaries bundle this exact build:
+
+  Source project: BtbN FFmpeg-Builds
+  Release:        Auto-Build 2026-07-12 13:16 (commit ca65803)
+  Asset:          ffmpeg-master-latest-win64-lgpl.zip
+  SHA-256 (zip, as published by BtbN):
+                  a61ef31877b5a8c554638d136f6f3f5451659fccbbf31dd9bd9b5d1e56a824a5
+  SHA-256 (extracted ffmpeg.exe actually bundled):
+                  7b355a9c9ad772d06fe99b5fe2cd3fdd170002967de2f9dc5c7dc80e8cff870d
+  Download:       https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip
+  Project / source: https://github.com/BtbN/FFmpeg-Builds  and  https://ffmpeg.org/
+
+Note: the "latest" download URL above serves the newest build over time. Once
+BtbN publishes a newer build, this exact version remains available under the
+BtbN releases list with the commit baked into its filename.
+
+If you build and distribute this app with a DIFFERENT ffmpeg build than the one
+above, update this section to record the version, SHA-256, and a source link
+for the build you actually shipped. Providing a link to the matching FFmpeg
+source (LGPL requirement) is your responsibility as the distributor.
+
+Note: FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg
+project. Spelled "FFmpeg" - two capital F's, lowercase "mpeg".
+
+This notice is provided for compliance/attribution purposes and is not legal
+advice.

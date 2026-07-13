@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
 """
-MP3 Album Art Corrector — GUI Edition
-=====================================
-A desktop GUI wrapper around the original "MP3 Album Image Correction for
-Pioneer (500x500 jpg)" script.
+MP3 Album Image Correction for Pioneer
 
-Resizes embedded MP3 album art to a max dimension (default 500 px) and converts
-PNG covers to JPEG so they play nicely with Pioneer CDJ / rekordbox hardware.
+Resizes embedded MP3 album art down to a max dimension (500px by default) and
+converts PNG covers to JPEG, so the artwork shows up correctly on Pioneer CDJ
+gear and in rekordbox. The audio is copied through untouched; only the artwork
+is changed.
 
-Features
---------
-* Drag & drop MP3 files or whole folders onto the window (needs tkinterdnd2;
-  falls back gracefully to buttons if it isn't installed).
-* Add Files / Add Folder buttons + paste-from-clipboard (Ctrl+V).
-* A reorderable queue with per-file status, remove / clear, right-click menu.
-* Adjustable max size, recursive-scan toggle, "force JPEG" toggle,
-  "keep backup (.bak)" toggle, JPEG quality slider.
-* Live progress bar, running counters, and a searchable results log.
-* Runs the heavy work on a background thread so the UI never freezes.
-* Export the log to a .txt / .log file.
+What it does:
+- Drag and drop MP3 files or folders onto the window (needs tkinterdnd2; if
+  that's not installed you use the buttons instead).
+- Add Files / Add Folder buttons and paste paths with Ctrl+V.
+- A queue with per-file status, remove, and clear, plus a right-click menu.
+- Options for max size, JPEG quality, force PNG to JPEG, scan subfolders, and
+  keeping a .bak backup.
+- Progress bar and running counts.
+- Processing runs on a background thread so the window stays responsive.
+- Every run writes a log, and you can also export it from the File menu.
 
-Requirements
-------------
+Requirements:
     pip install mutagen pillow tkinterdnd2
 
-ffmpeg is used to re-embed the artwork. The app looks for a bundled copy at
-'bin/ffmpeg.exe' next to it first, and otherwise falls back to ffmpeg on the
-system PATH.
+ffmpeg does the re-embedding. The app uses a bundled bin/ffmpeg.exe next to it
+if present, otherwise ffmpeg on the system PATH.
 
-tkinterdnd2 is OPTIONAL — the app still works without it, you just lose the
-drag-and-drop surface (everything else remains).
+tkinterdnd2 is optional. Without it you lose drag and drop but nothing else.
 """
 
 import os
@@ -45,13 +40,13 @@ from io import BytesIO
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# On Windows, a --windowed (no-console) build would otherwise flash a black
-# console window for every ffmpeg call. CREATE_NO_WINDOW suppresses that.
-# On macOS/Linux this flag doesn't exist, so it stays 0 (a harmless no-op).
+# On a --windowed build, Windows pops up a console window for every ffmpeg
+# call unless we pass CREATE_NO_WINDOW. The flag only exists on Windows, so
+# elsewhere it stays 0 and does nothing.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
 
 # ----------------------------------------------------------------------------
-# Optional / graceful dependency handling
+# Optional imports
 # ----------------------------------------------------------------------------
 try:
     from PIL import Image
@@ -70,6 +65,12 @@ try:
     HAVE_DND = True
 except Exception:                                    # pragma: no cover
     HAVE_DND = False
+
+try:
+    from send2trash import send2trash
+    HAVE_SEND2TRASH = True
+except Exception:                                    # pragma: no cover
+    HAVE_SEND2TRASH = False
 
 
 # ----------------------------------------------------------------------------
@@ -99,14 +100,13 @@ STATUS_COLORS = {
 
 
 # ----------------------------------------------------------------------------
-# Core image / mp3 logic (ported from the original script)
+# Core image / mp3 logic
 # ----------------------------------------------------------------------------
 def _app_base_dir():
     """Folder to look in for a bundled ffmpeg.
 
-    When frozen by PyInstaller (one-file), bundled data lives in a temp dir
-    exposed as sys._MEIPASS. When run as a normal script, it's the folder the
-    script lives in.
+    When frozen (one-file build), bundled files are unpacked to sys._MEIPASS.
+    Run as a script, it's the folder this file is in.
     """
     if getattr(sys, "frozen", False):
         return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
@@ -114,20 +114,19 @@ def _app_base_dir():
 
 
 def resource_path(name):
-    """Locate a bundled resource file (e.g. the app icon).
+    """Path to a bundled resource such as the icon.
 
-    When frozen by PyInstaller, resources are extracted to sys._MEIPASS. When
-    run as a normal script, they sit next to this file. Returns the full path.
+    Looks in sys._MEIPASS when frozen, otherwise next to this file.
     """
     base = getattr(sys, "_MEIPASS", None) or _app_base_dir()
     return os.path.join(base, name)
 
 
 def _icon_path():
-    """Full path to the app icon if it exists and we're on Windows, else None.
+    """Path to the app icon on Windows if it exists, otherwise None.
 
-    .ico is a Windows format; iconbitmap expects it there. On other platforms we
-    skip it so we don't raise.
+    .ico is a Windows format, so we only bother on Windows. Returning None
+    when there's no icon lets callers skip setting one.
     """
     if not sys.platform.startswith("win"):
         return None
@@ -136,11 +135,11 @@ def _icon_path():
 
 
 def apply_window_icon(win, as_default=False):
-    """Set the icon on a Tk window/dialog. Best-effort; never raises.
+    """Set the window icon. Does nothing if there's no icon.
 
-    as_default=True (used once on the root) applies the icon to the whole
-    application, so the title bar, the taskbar button, and every child dialog
-    (messageboxes, file dialogs, Toplevels) inherit it.
+    Pass as_default=True once on the root window. That makes the title bar,
+    the taskbar button, and any dialogs (message boxes, file dialogs) use the
+    icon too. Wrapped in try/except because a bad icon shouldn't crash the app.
     """
     path = _icon_path()
     if not path:
@@ -155,12 +154,12 @@ def apply_window_icon(win, as_default=False):
 
 
 def _exe_dir():
-    """Directory of the running program, for placing the logs folder.
+    """Folder that contains the running program, for the logs folder.
 
-    Unlike _app_base_dir(), this is the folder that actually contains the exe
-    the user launched (sys.executable when frozen) — NOT sys._MEIPASS, which is
-    a temp extraction dir that gets deleted on exit. When run as a plain script,
-    it's the folder the script lives in.
+    This is different from _app_base_dir(): when frozen we want the folder
+    holding the actual exe (sys.executable), not sys._MEIPASS, since _MEIPASS
+    is a temp folder that gets wiped when the app exits. Run as a script, it's
+    the script's own folder.
     """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -168,13 +167,11 @@ def _exe_dir():
 
 
 def get_logs_dir():
-    """Return a writable 'logs' folder next to the exe, creating it if needed.
+    """Return a writable 'logs' folder, creating it if needed.
 
-    Preference:
-      1. A 'logs' folder beside the exe (portable — logs live with the app).
-      2. If that location isn't writable (e.g. the app sits in Program Files),
-         fall back to a per-user location so logging still works.
-    Returns the folder path, or None if no writable location could be made.
+    First choice is a 'logs' folder next to the exe so logs travel with the
+    app. If that can't be written (say the app is in Program Files), fall back
+    to a per-user folder. Returns None if neither can be created.
     """
     candidates = [os.path.join(_exe_dir(), "logs")]
     # Per-user fallback for protected install locations.
@@ -199,11 +196,11 @@ def get_logs_dir():
 
 
 class RunLogger:
-    """Simple per-run logger that writes a timestamped file into the logs folder.
+    """Writes one timestamped log file per run into the logs folder.
 
-    Mirrors the original CLI behavior: a fresh resize_album_art_<timestamp>.log
-    per run, holding per-file results and an end-of-run summary. Best-effort —
-    if the folder isn't writable, it silently does nothing so the app still runs.
+    Each run gets its own resize_album_art_<timestamp>.log with the per-file
+    results and a summary at the end. If the logs folder can't be written, it
+    just skips logging rather than stopping the run.
     """
 
     def __init__(self):
@@ -246,13 +243,11 @@ class RunLogger:
 
 
 def get_ffmpeg_path():
-    """Return a usable ffmpeg command.
+    """Find ffmpeg: bundled copy first, then PATH.
 
-    Preference order:
-      1. A bundled binary at <base>/bin/ffmpeg(.exe)  (shipped with the app)
-      2. ffmpeg found on the system PATH
-    Returns the full path to the bundled binary if present, otherwise the bare
-    name "ffmpeg" (resolved via PATH by the OS), or None if nothing is found.
+    Checks bin/ffmpeg(.exe) next to the app and uses it if it's there.
+    Otherwise falls back to ffmpeg on PATH. Returns the path, or None if
+    neither turns up.
     """
     exe = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"
     bundled = os.path.join(_app_base_dir(), "bin", exe)
@@ -405,6 +400,54 @@ def collect_mp3s(paths, recursive=True):
     return found
 
 
+def is_wmp_junk_image(filename):
+    """True if a filename is one of the hidden images Windows Media Player
+    leaves in music folders. Pioneer doesn't use these and they waste space.
+
+    Covers: Folder.jpg, AlbumArtSmall.jpg, and AlbumArt_{GUID}_Large.jpg /
+    AlbumArt_{GUID}_Small.jpg (any AlbumArt*.jpg). Case-insensitive.
+    """
+    low = filename.lower()
+    if not low.endswith(".jpg"):
+        return False
+    return (low == "folder.jpg"
+            or low == "albumartsmall.jpg"
+            or low.startswith("albumart"))
+
+
+def remove_wmp_junk(folders):
+    """Send WMP hidden album-art files in the given folders to the Recycle Bin.
+
+    Returns (removed_paths, errors) where errors is a list of (path, reason).
+    Uses send2trash so files go to the Recycle Bin and stay recoverable. If
+    send2trash isn't available, nothing is deleted and it reports that instead
+    of permanently removing anything.
+    """
+    removed, errors = [], []
+    if not HAVE_SEND2TRASH:
+        errors.append(("(send2trash not installed)",
+                       "Cannot move files to the Recycle Bin; skipped for safety."))
+        return removed, errors
+    for folder in folders:
+        try:
+            entries = os.listdir(folder)
+        except Exception as e:
+            errors.append((folder, f"could not read folder: {e}"))
+            continue
+        for name in entries:
+            if not is_wmp_junk_image(name):
+                continue
+            full = os.path.join(folder, name)
+            if not os.path.isfile(full):
+                continue
+            try:
+                send2trash(full)
+                removed.append(full)
+            except Exception as e:
+                errors.append((full, str(e)))
+    return removed, errors
+
+
 def parse_dnd_paths(data):
     """tkinterdnd2 gives a brace-wrapped, space-joined string. Parse it."""
     paths, buf, in_brace = [], "", False
@@ -438,9 +481,8 @@ class App:
         self.cancel_flag = threading.Event()
         self.rows = {}          # iid -> {"path":..., "status":...}
 
-        root.title("MP3 Album Art Correction for Pioneer  v1.0.0.0")
-        # Apply the icon to the whole app: title bar, taskbar button, and every
-        # child dialog (messageboxes, file dialogs) inherits it via default=.
+        root.title("MP3 Album Art Correction for Pioneer  v1.1.0.0")
+        # default=True so the title bar, taskbar, and dialogs all use the icon
         apply_window_icon(root, as_default=True)
         root.geometry("980x680")
         root.minsize(820, 560)
@@ -602,12 +644,15 @@ class App:
         self.force_jpeg   = tk.BooleanVar(value=True)
         self.recursive    = tk.BooleanVar(value=True)
         self.keep_backup  = tk.BooleanVar(value=False)
+        self.clean_wmp    = tk.BooleanVar(value=True)
         ttk.Checkbutton(opt, text="Force PNG → JPEG", variable=self.force_jpeg
                         ).grid(row=0, column=5, sticky="w", padx=14)
         ttk.Checkbutton(opt, text="Scan subfolders", variable=self.recursive
                         ).grid(row=0, column=6, sticky="w", padx=6)
         ttk.Checkbutton(opt, text="Keep .bak backup", variable=self.keep_backup
                         ).grid(row=0, column=7, sticky="w", padx=6)
+        ttk.Checkbutton(opt, text="Remove WMP hidden art", variable=self.clean_wmp
+                        ).grid(row=0, column=8, sticky="w", padx=6)
 
     # ---- table --------------------------------------------------------------
     def _build_table(self):
@@ -745,12 +790,18 @@ class App:
             self.rows.pop(iid, None)
         self._refresh_counts()
 
+    def _clear_wmp_rows(self):
+        # WMP cleanup rows aren't tracked in self.rows, so remove them by tag.
+        for iid in self.tree.tag_has("wmpinfo"):
+            self.tree.delete(iid)
+
     def clear_queue(self):
         if self.worker and self.worker.is_alive():
             return
         for iid in list(self.rows):
             self.tree.delete(iid)
         self.rows.clear()
+        self._clear_wmp_rows()
         self.progress["value"] = 0
         self.result_lbl.config(text="")
         self._refresh_counts()
@@ -816,7 +867,58 @@ class App:
                                  "Install: pip install " + " ".join(missing))
             return
 
+        # Warn if any cover-affecting setting differs from the Pioneer spec
+        # (500px, JPEG quality 90, PNG converted to JPEG, WMP hidden art
+        # removed). Anything off-spec risks artwork the deck won't display or
+        # leftover junk files. Scan subfolders and keep backup don't affect the
+        # result, so they don't trigger this.
+        size = int(self.max_size.get())
+        quality = int(self.quality.get())
+        force_jpeg = bool(self.force_jpeg.get())
+        clean_wmp = bool(self.clean_wmp.get())
+        off_spec = []
+        if size != 500:
+            off_spec.append(
+                f'- "Max size (px)" is {size}. The tested value is 500. '
+                f'Set it back in the box at the top left.')
+        if quality != 90:
+            off_spec.append(
+                f'- "JPEG quality" is {quality}. The tested value is 90. '
+                f'Set it back with the slider at the top.')
+        if not force_jpeg:
+            off_spec.append(
+                '- "Force PNG to JPEG" is off. Pioneer gear expects JPEG '
+                'covers; PNG artwork may not display. Turn it back on.')
+        if not clean_wmp:
+            off_spec.append(
+                '- "Remove WMP hidden art" is off. Windows Media Player leaves '
+                'hidden Folder.jpg / AlbumArt files that Pioneer does not need '
+                'and that waste space. Turn it back on to clean them.')
+        if off_spec:
+            msg = (
+                "One or more settings differ from the values tested to work "
+                "on Pioneer CDJ hardware:\n\n"
+                + "\n\n".join(off_spec)
+                + "\n\nAnything off-spec may load slowly or not show up at all "
+                  "on the deck. You can set these back and try again, or "
+                  "continue with the current settings.\n\n"
+                  "Continue with the current settings?")
+            if not messagebox.askyesno("Settings differ from the Pioneer spec", msg):
+                return
+
+        # If cleanup is on but send2trash isn't available, say so up front
+        # instead of silently skipping it mid-run.
+        if bool(self.clean_wmp.get()) and not HAVE_SEND2TRASH:
+            if not messagebox.askyesno(
+                    "Recycle Bin support missing",
+                    "\"Remove WMP hidden art\" is on, but the send2trash package "
+                    "isn't installed, so those files can't be moved to the "
+                    "Recycle Bin. They will be left in place (nothing deleted).\n\n"
+                    "Continue without removing them?"):
+                return
+
         # reset statuses
+        self._clear_wmp_rows()   # drop any WMP row from a previous run
         for iid, info in self.rows.items():
             info["status"] = "queued"
             self.tree.item(iid, values=("queued", info["path"], ""), tags=("queued",))
@@ -834,30 +936,59 @@ class App:
             quality=int(self.quality.get()),
             keep_backup=bool(self.keep_backup.get()),
         )
+        # Folders to clean of WMP hidden art = the parent folder of every
+        # queued MP3 (de-duplicated). Only used when the option is on.
+        clean_wmp = bool(self.clean_wmp.get())
+        folders = sorted({os.path.dirname(info["path"]) for info in self.rows.values()})
         items = list(self.rows.items())
-        self.worker = threading.Thread(target=self._run_worker, args=(items, opts), daemon=True)
+        self.worker = threading.Thread(
+            target=self._run_worker, args=(items, opts, clean_wmp, folders), daemon=True)
         self.worker.start()
 
     def cancel_processing(self):
         self.cancel_flag.set()
         self.result_lbl.config(text="Cancelling…")
 
-    def _run_worker(self, items, opts):
+    def _run_worker(self, items, opts, clean_wmp=False, folders=None):
         logger = RunLogger()
         started = datetime.now()
         logger.info(f"Run started: {len(items)} file(s) queued")
         logger.info("Options: max_size={max_size} force_jpeg={force_jpeg} "
-                    "quality={quality} keep_backup={keep_backup}".format(**opts))
+                    "quality={quality} keep_backup={keep_backup}".format(**opts)
+                    + f" clean_wmp={clean_wmp}")
         stats = {"passed": 0, "skipped": 0, "failed": 0}
         failed_files = []
         log_path = logger.path
+        wmp_removed = 0
+        wmp_errors = 0
         try:
+            # Clean WMP hidden album art first (Recycle Bin), if enabled.
+            if clean_wmp and folders:
+                removed, errors = remove_wmp_junk(folders)
+                wmp_removed = len(removed)
+                wmp_errors = len(errors)
+                logger.info(f"WMP hidden art: {wmp_removed} file(s) moved to "
+                            f"Recycle Bin across {len(folders)} folder(s)")
+                for p in removed:
+                    logger.info(f"[removed] {p}")
+                for p, reason in errors:
+                    logger.error(f"WMP cleanup: {p} -> {reason}")
+                # Show a visible line in the queue so it isn't silent.
+                if wmp_removed or wmp_errors:
+                    detail = f"{wmp_removed} moved to Recycle Bin"
+                    if wmp_errors:
+                        detail += f", {wmp_errors} error(s)"
+                    self.msg_q.put(("wmp", detail, wmp_errors > 0))
+                else:
+                    self.msg_q.put(("wmp", "no WMP hidden art found", False))
+
             for idx, (iid, info) in enumerate(items, start=1):
                 if self.cancel_flag.is_set():
                     logger.info("Run cancelled by user")
-                    self._log_summary(logger, stats, failed_files, started, cancelled=True)
+                    self._log_summary(logger, stats, failed_files, started,
+                                      cancelled=True, wmp_removed=wmp_removed)
                     logger.close()
-                    self.msg_q.put(("done", stats, True, log_path))
+                    self.msg_q.put(("done", stats, True, log_path, wmp_removed))
                     return
                 self.msg_q.put(("working", iid))
                 status, detail = process_mp3(info["path"], **opts)
@@ -869,12 +1000,13 @@ class App:
                     logger.info(f"[{status}] {info['path']}"
                                 + (f" ({detail})" if detail else ""))
                 self.msg_q.put(("result", iid, status, detail, idx))
-            self._log_summary(logger, stats, failed_files, started, cancelled=False)
+            self._log_summary(logger, stats, failed_files, started,
+                              cancelled=False, wmp_removed=wmp_removed)
         finally:
             logger.close()
-        self.msg_q.put(("done", stats, False, log_path))
+        self.msg_q.put(("done", stats, False, log_path, wmp_removed))
 
-    def _log_summary(self, logger, stats, failed_files, started, cancelled):
+    def _log_summary(self, logger, stats, failed_files, started, cancelled, wmp_removed=0):
         elapsed = datetime.now() - started
         total = stats.get("passed", 0) + stats.get("skipped", 0) + stats.get("failed", 0)
         if failed_files:
@@ -887,6 +1019,7 @@ class App:
             f"updated={stats.get('passed', 0)} "
             f"skipped={stats.get('skipped', 0)} "
             f"failed={stats.get('failed', 0)} "
+            f"wmp_removed={wmp_removed} "
             f"elapsed={elapsed} "
             f"{'(cancelled)' if cancelled else ''}".rstrip())
 
@@ -902,6 +1035,15 @@ class App:
                         self.tree.item(iid, values=("working", self.rows[iid]["path"], "…"),
                                        tags=("working",))
                         self.tree.see(iid)
+                elif kind == "wmp":
+                    detail, had_error = msg[1], msg[2]
+                    color = "failed" if had_error else "passed"
+                    row = self.tree.insert("", 0,
+                                           values=("WMP cleanup",
+                                                   "Windows Media Player hidden art",
+                                                   detail),
+                                           tags=("wmpinfo", color))
+                    self.tree.see(row)
                 elif kind == "result":
                     _, iid, status, detail, idx = msg
                     if iid in self.rows:
@@ -910,19 +1052,21 @@ class App:
                                        tags=(status,))
                     self.progress["value"] = idx
                 elif kind == "done":
-                    stats, cancelled, log_path = msg[1], msg[2], msg[3]
-                    self._finish(stats, cancelled, log_path)
+                    stats, cancelled, log_path, wmp_removed = msg[1], msg[2], msg[3], msg[4]
+                    self._finish(stats, cancelled, log_path, wmp_removed)
         except queue.Empty:
             pass
         self.root.after(80, self._pump_queue)
 
-    def _finish(self, stats, cancelled, log_path=None):
+    def _finish(self, stats, cancelled, log_path=None, wmp_removed=0):
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self._last_log_path = log_path
         verb = "Cancelled" if cancelled else "Done"
         summary = (f"{verb} — {stats.get('passed',0)} updated · "
                    f"{stats.get('skipped',0)} skipped · {stats.get('failed',0)} failed")
+        if wmp_removed:
+            summary += f" · {wmp_removed} WMP art removed"
         if log_path:
             summary += "  ·  log saved"
         self.result_lbl.config(text=summary)
@@ -978,10 +1122,9 @@ class App:
 def _set_win_app_id():
     """Give the app its own taskbar identity on Windows.
 
-    Without an explicit AppUserModelID, Windows may group the window under the
-    Python/pythonw host and show its icon in the taskbar instead of ours. Setting
-    a distinct ID makes the taskbar use this app's own icon. Best-effort no-op
-    elsewhere or on failure.
+    Without this, Windows lumps the window in with the Python host and shows
+    Python's icon on the taskbar instead of ours. Setting an AppUserModelID
+    fixes that. Windows only; if the call fails it's not worth crashing over.
     """
     if not sys.platform.startswith("win"):
         return

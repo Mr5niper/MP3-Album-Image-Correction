@@ -66,6 +66,12 @@ try:
 except Exception:                                    # pragma: no cover
     HAVE_DND = False
 
+try:
+    from send2trash import send2trash
+    HAVE_SEND2TRASH = True
+except Exception:                                    # pragma: no cover
+    HAVE_SEND2TRASH = False
+
 
 # ----------------------------------------------------------------------------
 # Theme
@@ -394,6 +400,54 @@ def collect_mp3s(paths, recursive=True):
     return found
 
 
+def is_wmp_junk_image(filename):
+    """True if a filename is one of the hidden images Windows Media Player
+    leaves in music folders. Pioneer doesn't use these and they waste space.
+
+    Covers: Folder.jpg, AlbumArtSmall.jpg, and AlbumArt_{GUID}_Large.jpg /
+    AlbumArt_{GUID}_Small.jpg (any AlbumArt*.jpg). Case-insensitive.
+    """
+    low = filename.lower()
+    if not low.endswith(".jpg"):
+        return False
+    return (low == "folder.jpg"
+            or low == "albumartsmall.jpg"
+            or low.startswith("albumart"))
+
+
+def remove_wmp_junk(folders):
+    """Send WMP hidden album-art files in the given folders to the Recycle Bin.
+
+    Returns (removed_paths, errors) where errors is a list of (path, reason).
+    Uses send2trash so files go to the Recycle Bin and stay recoverable. If
+    send2trash isn't available, nothing is deleted and it reports that instead
+    of permanently removing anything.
+    """
+    removed, errors = [], []
+    if not HAVE_SEND2TRASH:
+        errors.append(("(send2trash not installed)",
+                       "Cannot move files to the Recycle Bin; skipped for safety."))
+        return removed, errors
+    for folder in folders:
+        try:
+            entries = os.listdir(folder)
+        except Exception as e:
+            errors.append((folder, f"could not read folder: {e}"))
+            continue
+        for name in entries:
+            if not is_wmp_junk_image(name):
+                continue
+            full = os.path.join(folder, name)
+            if not os.path.isfile(full):
+                continue
+            try:
+                send2trash(full)
+                removed.append(full)
+            except Exception as e:
+                errors.append((full, str(e)))
+    return removed, errors
+
+
 def parse_dnd_paths(data):
     """tkinterdnd2 gives a brace-wrapped, space-joined string. Parse it."""
     paths, buf, in_brace = [], "", False
@@ -590,12 +644,15 @@ class App:
         self.force_jpeg   = tk.BooleanVar(value=True)
         self.recursive    = tk.BooleanVar(value=True)
         self.keep_backup  = tk.BooleanVar(value=False)
+        self.clean_wmp    = tk.BooleanVar(value=True)
         ttk.Checkbutton(opt, text="Force PNG → JPEG", variable=self.force_jpeg
                         ).grid(row=0, column=5, sticky="w", padx=14)
         ttk.Checkbutton(opt, text="Scan subfolders", variable=self.recursive
                         ).grid(row=0, column=6, sticky="w", padx=6)
         ttk.Checkbutton(opt, text="Keep .bak backup", variable=self.keep_backup
                         ).grid(row=0, column=7, sticky="w", padx=6)
+        ttk.Checkbutton(opt, text="Remove WMP hidden art", variable=self.clean_wmp
+                        ).grid(row=0, column=8, sticky="w", padx=6)
 
     # ---- table --------------------------------------------------------------
     def _build_table(self):
@@ -733,12 +790,18 @@ class App:
             self.rows.pop(iid, None)
         self._refresh_counts()
 
+    def _clear_wmp_rows(self):
+        # WMP cleanup rows aren't tracked in self.rows, so remove them by tag.
+        for iid in self.tree.tag_has("wmpinfo"):
+            self.tree.delete(iid)
+
     def clear_queue(self):
         if self.worker and self.worker.is_alive():
             return
         for iid in list(self.rows):
             self.tree.delete(iid)
         self.rows.clear()
+        self._clear_wmp_rows()
         self.progress["value"] = 0
         self.result_lbl.config(text="")
         self._refresh_counts()
@@ -805,13 +868,14 @@ class App:
             return
 
         # Warn if any cover-affecting setting differs from the Pioneer spec
-        # (500px, JPEG quality 90, PNG converted to JPEG). Anything off-spec,
-        # in either direction, risks artwork the deck won't display. The other
-        # options (scan subfolders, keep backup) don't affect the cover, so
-        # they don't trigger this.
+        # (500px, JPEG quality 90, PNG converted to JPEG, WMP hidden art
+        # removed). Anything off-spec risks artwork the deck won't display or
+        # leftover junk files. Scan subfolders and keep backup don't affect the
+        # result, so they don't trigger this.
         size = int(self.max_size.get())
         quality = int(self.quality.get())
         force_jpeg = bool(self.force_jpeg.get())
+        clean_wmp = bool(self.clean_wmp.get())
         off_spec = []
         if size != 500:
             off_spec.append(
@@ -825,6 +889,11 @@ class App:
             off_spec.append(
                 '- "Force PNG to JPEG" is off. Pioneer gear expects JPEG '
                 'covers; PNG artwork may not display. Turn it back on.')
+        if not clean_wmp:
+            off_spec.append(
+                '- "Remove WMP hidden art" is off. Windows Media Player leaves '
+                'hidden Folder.jpg / AlbumArt files that Pioneer does not need '
+                'and that waste space. Turn it back on to clean them.')
         if off_spec:
             msg = (
                 "One or more settings differ from the values tested to work "
@@ -837,7 +906,19 @@ class App:
             if not messagebox.askyesno("Settings differ from the Pioneer spec", msg):
                 return
 
+        # If cleanup is on but send2trash isn't available, say so up front
+        # instead of silently skipping it mid-run.
+        if bool(self.clean_wmp.get()) and not HAVE_SEND2TRASH:
+            if not messagebox.askyesno(
+                    "Recycle Bin support missing",
+                    "\"Remove WMP hidden art\" is on, but the send2trash package "
+                    "isn't installed, so those files can't be moved to the "
+                    "Recycle Bin. They will be left in place (nothing deleted).\n\n"
+                    "Continue without removing them?"):
+                return
+
         # reset statuses
+        self._clear_wmp_rows()   # drop any WMP row from a previous run
         for iid, info in self.rows.items():
             info["status"] = "queued"
             self.tree.item(iid, values=("queued", info["path"], ""), tags=("queued",))
@@ -855,30 +936,59 @@ class App:
             quality=int(self.quality.get()),
             keep_backup=bool(self.keep_backup.get()),
         )
+        # Folders to clean of WMP hidden art = the parent folder of every
+        # queued MP3 (de-duplicated). Only used when the option is on.
+        clean_wmp = bool(self.clean_wmp.get())
+        folders = sorted({os.path.dirname(info["path"]) for info in self.rows.values()})
         items = list(self.rows.items())
-        self.worker = threading.Thread(target=self._run_worker, args=(items, opts), daemon=True)
+        self.worker = threading.Thread(
+            target=self._run_worker, args=(items, opts, clean_wmp, folders), daemon=True)
         self.worker.start()
 
     def cancel_processing(self):
         self.cancel_flag.set()
         self.result_lbl.config(text="Cancelling…")
 
-    def _run_worker(self, items, opts):
+    def _run_worker(self, items, opts, clean_wmp=False, folders=None):
         logger = RunLogger()
         started = datetime.now()
         logger.info(f"Run started: {len(items)} file(s) queued")
         logger.info("Options: max_size={max_size} force_jpeg={force_jpeg} "
-                    "quality={quality} keep_backup={keep_backup}".format(**opts))
+                    "quality={quality} keep_backup={keep_backup}".format(**opts)
+                    + f" clean_wmp={clean_wmp}")
         stats = {"passed": 0, "skipped": 0, "failed": 0}
         failed_files = []
         log_path = logger.path
+        wmp_removed = 0
+        wmp_errors = 0
         try:
+            # Clean WMP hidden album art first (Recycle Bin), if enabled.
+            if clean_wmp and folders:
+                removed, errors = remove_wmp_junk(folders)
+                wmp_removed = len(removed)
+                wmp_errors = len(errors)
+                logger.info(f"WMP hidden art: {wmp_removed} file(s) moved to "
+                            f"Recycle Bin across {len(folders)} folder(s)")
+                for p in removed:
+                    logger.info(f"[removed] {p}")
+                for p, reason in errors:
+                    logger.error(f"WMP cleanup: {p} -> {reason}")
+                # Show a visible line in the queue so it isn't silent.
+                if wmp_removed or wmp_errors:
+                    detail = f"{wmp_removed} moved to Recycle Bin"
+                    if wmp_errors:
+                        detail += f", {wmp_errors} error(s)"
+                    self.msg_q.put(("wmp", detail, wmp_errors > 0))
+                else:
+                    self.msg_q.put(("wmp", "no WMP hidden art found", False))
+
             for idx, (iid, info) in enumerate(items, start=1):
                 if self.cancel_flag.is_set():
                     logger.info("Run cancelled by user")
-                    self._log_summary(logger, stats, failed_files, started, cancelled=True)
+                    self._log_summary(logger, stats, failed_files, started,
+                                      cancelled=True, wmp_removed=wmp_removed)
                     logger.close()
-                    self.msg_q.put(("done", stats, True, log_path))
+                    self.msg_q.put(("done", stats, True, log_path, wmp_removed))
                     return
                 self.msg_q.put(("working", iid))
                 status, detail = process_mp3(info["path"], **opts)
@@ -890,12 +1000,13 @@ class App:
                     logger.info(f"[{status}] {info['path']}"
                                 + (f" ({detail})" if detail else ""))
                 self.msg_q.put(("result", iid, status, detail, idx))
-            self._log_summary(logger, stats, failed_files, started, cancelled=False)
+            self._log_summary(logger, stats, failed_files, started,
+                              cancelled=False, wmp_removed=wmp_removed)
         finally:
             logger.close()
-        self.msg_q.put(("done", stats, False, log_path))
+        self.msg_q.put(("done", stats, False, log_path, wmp_removed))
 
-    def _log_summary(self, logger, stats, failed_files, started, cancelled):
+    def _log_summary(self, logger, stats, failed_files, started, cancelled, wmp_removed=0):
         elapsed = datetime.now() - started
         total = stats.get("passed", 0) + stats.get("skipped", 0) + stats.get("failed", 0)
         if failed_files:
@@ -908,6 +1019,7 @@ class App:
             f"updated={stats.get('passed', 0)} "
             f"skipped={stats.get('skipped', 0)} "
             f"failed={stats.get('failed', 0)} "
+            f"wmp_removed={wmp_removed} "
             f"elapsed={elapsed} "
             f"{'(cancelled)' if cancelled else ''}".rstrip())
 
@@ -923,6 +1035,15 @@ class App:
                         self.tree.item(iid, values=("working", self.rows[iid]["path"], "…"),
                                        tags=("working",))
                         self.tree.see(iid)
+                elif kind == "wmp":
+                    detail, had_error = msg[1], msg[2]
+                    color = "failed" if had_error else "passed"
+                    row = self.tree.insert("", 0,
+                                           values=("WMP cleanup",
+                                                   "Windows Media Player hidden art",
+                                                   detail),
+                                           tags=("wmpinfo", color))
+                    self.tree.see(row)
                 elif kind == "result":
                     _, iid, status, detail, idx = msg
                     if iid in self.rows:
@@ -931,19 +1052,21 @@ class App:
                                        tags=(status,))
                     self.progress["value"] = idx
                 elif kind == "done":
-                    stats, cancelled, log_path = msg[1], msg[2], msg[3]
-                    self._finish(stats, cancelled, log_path)
+                    stats, cancelled, log_path, wmp_removed = msg[1], msg[2], msg[3], msg[4]
+                    self._finish(stats, cancelled, log_path, wmp_removed)
         except queue.Empty:
             pass
         self.root.after(80, self._pump_queue)
 
-    def _finish(self, stats, cancelled, log_path=None):
+    def _finish(self, stats, cancelled, log_path=None, wmp_removed=0):
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self._last_log_path = log_path
         verb = "Cancelled" if cancelled else "Done"
         summary = (f"{verb} — {stats.get('passed',0)} updated · "
                    f"{stats.get('skipped',0)} skipped · {stats.get('failed',0)} failed")
+        if wmp_removed:
+            summary += f" · {wmp_removed} WMP art removed"
         if log_path:
             summary += "  ·  log saved"
         self.result_lbl.config(text=summary)

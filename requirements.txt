@@ -2,8 +2,8 @@
 #
 # Versions are frozen to a known-good build on Python 3.13.12 (Windows).
 # The app needs Pillow and mutagen at runtime; tkinterdnd2 enables the
-# drag-and-drop surface. PyInstaller (and its hooks) are only needed to
-# build the .exe.
+# drag-and-drop surface; send2trash moves removed files to the Recycle Bin.
+# PyInstaller (and its hooks) are only needed to build the .exe.
 #
 # ffmpeg is NOT a Python package and is not installed by pip. This build
 # bundles it: place an LGPL ffmpeg.exe at .\bin\ffmpeg.exe before building
@@ -14,6 +14,7 @@
 pillow==12.3.0
 mutagen==1.48.1
 tkinterdnd2==0.6.2
+send2trash==2.1.0
 
 # ---- Build-time only (PyInstaller) ----
 pyinstaller==6.21.0

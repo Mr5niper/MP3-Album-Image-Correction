@@ -1,0 +1,41 @@
+THIRD-PARTY NOTICES
+===================
+
+This application bundles FFmpeg.
+
+This software uses libraries from the FFmpeg project under the LGPLv2.1.
+FFmpeg is licensed under the GNU Lesser General Public License, version 2.1
+or later. The FFmpeg source code can be obtained from:
+
+    https://ffmpeg.org/
+
+IMPORTANT - which FFmpeg build to bundle
+----------------------------------------
+Only bundle an LGPL build of ffmpeg.exe. Do NOT bundle a build compiled with
+--enable-gpl (for example builds that include x264/x265) or with
+--enable-nonfree, because:
+
+  * A GPL build would require this entire application to be released under the
+    GPL.
+  * A "nonfree" build cannot be legally redistributed at all.
+
+This app only stream-copies audio and embeds a JPEG cover (ffmpeg -c copy). It
+does not encode audio or video, so a minimal LGPL "shared" or "essentials"
+build is sufficient. Recommended sources for LGPL Windows builds:
+
+    https://ffmpeg.org/download.html   (see the Windows builds linked there)
+
+When you publish a release that includes ffmpeg.exe:
+  1. Keep this NOTICE in the release.
+  2. Provide a link to the FFmpeg source for the exact version you shipped
+     (host it alongside your binary, or link to the official source download
+     for that version/build).
+  3. Record the FFmpeg version you bundled below.
+
+Bundled FFmpeg version: __________________________  (fill in before release)
+
+Note: FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg
+project. Spelled "FFmpeg" - two capital F's, lowercase "mpeg".
+
+This notice is provided for compliance/attribution purposes and is not legal
+advice.

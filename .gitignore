@@ -9,6 +9,12 @@ dist/
 # Auto-generated Windows version resource
 file_version_info.txt
 
+# ---- Bundled ffmpeg ----
+# The ffmpeg binary is large; by default it is not committed. Provide it
+# locally at bin\ffmpeg.exe before building. Remove this line if you DO want
+# to commit it to the repo (make sure it is an LGPL build - see NOTICE).
+bin/ffmpeg.exe
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

@@ -35,6 +35,27 @@ if "!CURRENT_PYTHON_VERSION!" neq "%REQUIRED_PYTHON_VERSION%" (
 )
 
 :: ==========================================================================
+:: Pre-flight Check: Verify bundled ffmpeg is present
+:: ==========================================================================
+:: The app calls ffmpeg to re-embed the artwork. This build bundles it so the
+:: finished .exe is self-contained. Place an ffmpeg.exe at .\bin\ffmpeg.exe
+:: before building. Use an LGPL build (not a GPL or "nonfree" build) so the
+:: release stays redistributable - see NOTICE for the attribution terms.
+if not exist ".\bin\ffmpeg.exe" (
+    echo.
+    echo [ERROR] Missing .\bin\ffmpeg.exe
+    echo.
+    echo This build bundles ffmpeg into the executable, but no ffmpeg.exe was
+    echo found at .\bin\ffmpeg.exe. Create a 'bin' folder next to this script
+    echo and put an ffmpeg.exe inside it, then run the build again.
+    echo.
+    echo [TIP] Use an LGPL "shared" or "essentials" ffmpeg build to keep the
+    echo       release legally redistributable. See NOTICE for details.
+    goto :error
+)
+echo [INFO] Found .\bin\ffmpeg.exe - it will be bundled into the app.
+
+:: ==========================================================================
 :: Build Script for %APP_NAME%
 :: ==========================================================================
 :: Creates a virtual environment, installs dependencies, and builds a
@@ -86,11 +107,9 @@ if errorlevel 1 (
 ::    --windowed                GUI app; no console window
 ::    --collect-all tkinterdnd2 bundle the tkdnd binaries so drag-and-drop works
 ::    --collect-all tkinter     bundle Tcl/Tk so the GUI runs on clean machines
+::    --add-data bin\ffmpeg.exe;bin   bundle ffmpeg; the app finds it at bin\ffmpeg.exe
 ::    --version-file version.txt  embeds Windows file-details version
 ::    --icon / --add-data icon.ico  app icon (added only if icon.ico exists)
-::
-:: NOTE: ffmpeg is NOT bundled. It is an external program the app calls at
-:: runtime and must be installed separately and available on the system PATH.
 echo [STEP 4/4] Building executable with PyInstaller...
 
 set "ICON_ARGS="
@@ -101,7 +120,7 @@ if exist icon.ico (
     echo [INFO] No icon.ico found - building without a custom icon.
 )
 
-pyinstaller -F --noupx --clean --windowed --name "%APP_NAME%" --collect-all tkinterdnd2 --collect-all tkinter --version-file version.txt !ICON_ARGS! ".\%SCRIPT_NAME%"
+pyinstaller -F --noupx --clean --windowed --name "%APP_NAME%" --collect-all tkinterdnd2 --collect-all tkinter --add-data "bin\ffmpeg.exe;bin" --version-file version.txt !ICON_ARGS! ".\%SCRIPT_NAME%"
 
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.
@@ -112,7 +131,9 @@ echo.
 echo [SUCCESS] Build completed successfully.
 echo The executable can be found in the '.\dist' directory.
 echo.
-echo [REMINDER] ffmpeg must be installed and on the system PATH for the app to work.
+echo [REMINDER] ffmpeg is bundled inside the .exe. When you publish the release,
+echo            include the LGPL attribution and a link to the ffmpeg source for
+echo            the exact build you shipped. See NOTICE for the required text.
 goto :end
 
 :error

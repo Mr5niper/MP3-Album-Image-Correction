@@ -28,28 +28,56 @@ Features
   something is missing instead of crashing.
 
 
-Requirements
+ffmpeg
 
-- Python 3.7 or newer
-- ffmpeg installed and on your system PATH
+The app uses ffmpeg to re-embed the artwork. It looks for ffmpeg in two places,
+in this order:
+
+  1. A bundled copy at bin\ffmpeg.exe next to the app (the built .exe ships
+     with this).
+  2. ffmpeg on your system PATH (used when you run the .py script directly and
+     have ffmpeg installed).
+
+So the built .exe is self-contained and needs nothing installed. If you run the
+raw Python script instead, either drop an ffmpeg.exe in a bin folder next to it
+or have ffmpeg on your PATH.
+
+
+Running the Python script
+
+- Python 3.13.12 (the build is pinned to this version)
 - Python packages:
 
     pip install mutagen pillow tkinterdnd2
 
-tkinterdnd2 is optional. It's only needed for drag and drop. Everything else
-works without it.
+  tkinterdnd2 is optional. It's only needed for drag and drop. Everything else
+  works without it.
 
-On some Linux systems you may also need the Tk package for Python:
+- ffmpeg available (see the ffmpeg section above)
 
-    sudo apt install python3-tk
-
-
-How to run
+Then run:
 
     python "MP3 Album Image Correction for Pioneer (500x500jpg).py"
 
-Then drag in some MP3s or folders (or use Add Files / Add Folder), change any
-options you want, and click Process.
+Drag in some MP3s or folders (or use Add Files / Add Folder), change any options
+you want, and click Process.
+
+
+Building the .exe
+
+The build produces a single self-contained .exe with ffmpeg bundled inside.
+
+1. Install Python 3.13.12 and add it to PATH.
+2. Put an ffmpeg.exe at bin\ffmpeg.exe next to BUILD_EXE.bat. Use an LGPL build
+   (not a GPL or nonfree build) so the release stays redistributable. See the
+   NOTICE file for details.
+3. Optional: put an icon.ico next to BUILD_EXE.bat to set the app icon.
+4. Double-click BUILD_EXE.bat.
+
+The finished .exe lands in the dist folder. The build script creates a venv,
+installs the pinned dependencies from requirements.txt, and runs PyInstaller
+with the right options (windowed, tkinter and tkinterdnd2 collected, ffmpeg and
+icon bundled, version info embedded).
 
 
 Notes
@@ -63,4 +91,5 @@ Notes
 
 License
 
-MIT License. Based on the original script by Mr5niper. See the LICENSE file.
+MIT License for this app. Based on the original script by Mr5niper. See the
+LICENSE file. Bundled ffmpeg is licensed separately under the LGPL; see NOTICE.

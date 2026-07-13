@@ -23,7 +23,10 @@ Features
 Requirements
 ------------
     pip install mutagen pillow tkinterdnd2
-    ffmpeg must be on PATH.
+
+ffmpeg is used to re-embed the artwork. The app looks for a bundled copy at
+'bin/ffmpeg.exe' next to it first, and otherwise falls back to ffmpeg on the
+system PATH.
 
 tkinterdnd2 is OPTIONAL — the app still works without it, you just lose the
 drag-and-drop surface (everything else remains).
@@ -98,8 +101,80 @@ STATUS_COLORS = {
 # ----------------------------------------------------------------------------
 # Core image / mp3 logic (ported from the original script)
 # ----------------------------------------------------------------------------
+def _app_base_dir():
+    """Folder to look in for a bundled ffmpeg.
+
+    When frozen by PyInstaller (one-file), bundled data lives in a temp dir
+    exposed as sys._MEIPASS. When run as a normal script, it's the folder the
+    script lives in.
+    """
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def resource_path(name):
+    """Locate a bundled resource file (e.g. the app icon).
+
+    When frozen by PyInstaller, resources are extracted to sys._MEIPASS. When
+    run as a normal script, they sit next to this file. Returns the full path.
+    """
+    base = getattr(sys, "_MEIPASS", None) or _app_base_dir()
+    return os.path.join(base, name)
+
+
+def _icon_path():
+    """Full path to the app icon if it exists and we're on Windows, else None.
+
+    .ico is a Windows format; iconbitmap expects it there. On other platforms we
+    skip it so we don't raise.
+    """
+    if not sys.platform.startswith("win"):
+        return None
+    p = resource_path("icon.ico")
+    return p if os.path.isfile(p) else None
+
+
+def apply_window_icon(win, as_default=False):
+    """Set the icon on a Tk window/dialog. Best-effort; never raises.
+
+    as_default=True (used once on the root) applies the icon to the whole
+    application, so the title bar, the taskbar button, and every child dialog
+    (messageboxes, file dialogs, Toplevels) inherit it.
+    """
+    path = _icon_path()
+    if not path:
+        return
+    try:
+        if as_default:
+            win.iconbitmap(default=path)
+        else:
+            win.iconbitmap(path)
+    except Exception:
+        pass
+
+
+def get_ffmpeg_path():
+    """Return a usable ffmpeg command.
+
+    Preference order:
+      1. A bundled binary at <base>/bin/ffmpeg(.exe)  (shipped with the app)
+      2. ffmpeg found on the system PATH
+    Returns the full path to the bundled binary if present, otherwise the bare
+    name "ffmpeg" (resolved via PATH by the OS), or None if nothing is found.
+    """
+    exe = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"
+    bundled = os.path.join(_app_base_dir(), "bin", exe)
+    if os.path.isfile(bundled):
+        return bundled
+    on_path = shutil.which("ffmpeg")
+    if on_path:
+        return on_path
+    return None
+
+
 def ffmpeg_available():
-    return shutil.which("ffmpeg") is not None
+    return get_ffmpeg_path() is not None
 
 
 def resize_image_data(image_data, max_size=500, force_jpeg=True, quality=90):
@@ -142,7 +217,7 @@ def replace_album_art(file_path, image_data, keep_backup=False):
             f.write(image_data)
 
         cmd = [
-            "ffmpeg", "-y",
+            get_ffmpeg_path(), "-y",
             "-i", file_path,
             "-i", temp_img,
             "-map", "0:a",
@@ -273,6 +348,9 @@ class App:
         self.rows = {}          # iid -> {"path":..., "status":...}
 
         root.title("MP3 Album Art Corrector — Pioneer 500×500")
+        # Apply the icon to the whole app: title bar, taskbar button, and every
+        # child dialog (messageboxes, file dialogs) inherits it via default=.
+        apply_window_icon(root, as_default=True)
         root.geometry("980x680")
         root.minsize(820, 560)
         root.configure(bg=Theme.BG)
@@ -634,8 +712,10 @@ class App:
             return
         if not ffmpeg_available():
             messagebox.showerror("ffmpeg missing",
-                                 "ffmpeg was not found on your PATH.\n"
-                                 "Install it and make sure it's accessible, then try again.")
+                                 "ffmpeg could not be found.\n\n"
+                                 "Expected a bundled copy at 'bin\\ffmpeg.exe' next to the app, "
+                                 "or ffmpeg installed on your system PATH.\n"
+                                 "Add one of those and try again.")
             return
         if not (HAVE_PIL and HAVE_MUTAGEN):
             missing = []
@@ -741,7 +821,7 @@ class App:
         problems = []
         if not HAVE_PIL:     problems.append("Pillow (pip install pillow)")
         if not HAVE_MUTAGEN: problems.append("mutagen (pip install mutagen)")
-        if not ffmpeg_available(): problems.append("ffmpeg (install & add to PATH)")
+        if not ffmpeg_available(): problems.append("ffmpeg (bundle in bin\\ or add to PATH)")
         if problems:
             self.result_lbl.config(text="⚠ missing: " + ", ".join(p.split(" ")[0] for p in problems))
             self.drop_sub.config(
@@ -765,7 +845,26 @@ class App:
         self.root.destroy()
 
 
+def _set_win_app_id():
+    """Give the app its own taskbar identity on Windows.
+
+    Without an explicit AppUserModelID, Windows may group the window under the
+    Python/pythonw host and show its icon in the taskbar instead of ours. Setting
+    a distinct ID makes the taskbar use this app's own icon. Best-effort no-op
+    elsewhere or on failure.
+    """
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Mr5niper.MP3AlbumImageCorrection")
+    except Exception:
+        pass
+
+
 def main():
+    _set_win_app_id()
     if HAVE_DND:
         root = TkinterDnD.Tk()
     else:

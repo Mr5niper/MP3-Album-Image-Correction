@@ -181,6 +181,7 @@ if errorlevel 1 (
 ::    --windowed                GUI app; no console window
 ::    --collect-all tkinterdnd2 bundle the tkdnd binaries so drag-and-drop works
 ::    --collect-all tkinter     bundle Tcl/Tk so the GUI runs on clean machines
+::    --collect-all send2trash  bundle send2trash so Recycle Bin removal works
 ::    --add-data bin\ffmpeg.exe;bin   bundle ffmpeg; the app finds it at bin\ffmpeg.exe
 ::    --version-file version.txt  embeds Windows file-details version
 ::    --icon / --add-data icon.ico  app icon (added only if icon.ico exists)
@@ -194,7 +195,7 @@ if exist icon.ico (
     echo [INFO] No icon.ico found - building without a custom icon.
 )
 
-pyinstaller -F --noupx --clean --windowed --name "%APP_NAME%" --collect-all tkinterdnd2 --collect-all tkinter --add-data "bin\ffmpeg.exe;bin" --version-file version.txt !ICON_ARGS! ".\%SCRIPT_NAME%"
+pyinstaller -F --noupx --clean --windowed --name "%APP_NAME%" --collect-all tkinterdnd2 --collect-all tkinter --collect-all send2trash --add-data "bin\ffmpeg.exe;bin" --version-file version.txt !ICON_ARGS! ".\%SCRIPT_NAME%"
 
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.

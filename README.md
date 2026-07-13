@@ -1,11 +1,13 @@
-MP3 Album Art Corrector (GUI)
+# MP3 Album Art Corrector (GUI)
 
 A desktop app that resizes embedded MP3 album art to a max size (default 500px)
 and converts PNG covers to JPEG so they show up correctly on Pioneer CDJ gear
 and in rekordbox.
 
-
-Features
+<img width="1424" height="1069" alt="image" src="https://github.com/user-attachments/assets/409ab5eb-50c3-4b74-9d4d-6cf217e756ca" />
+<br>
+<br>
+## Features
 
 - Drag and drop MP3 files or whole folders onto the window (needs tkinterdnd2,
   see below). If that package isn't installed, the app still works, you just
@@ -26,9 +28,9 @@ Features
 - Export the results to a .log or .txt file.
 - Checks for ffmpeg, Pillow, and mutagen on startup and tells you if
   something is missing instead of crashing.
-
-
-ffmpeg
+<br> 
+<br>
+## ffmpeg
 
 The app uses ffmpeg to re-embed the artwork. At runtime it looks for ffmpeg in
 two places, in this order:
@@ -49,9 +51,9 @@ newer ffmpeg than the one this project was tested with; the build prints a
 warning when that happens but still continues. Only an LGPL build is used, so
 the result stays redistributable. See the NOTICE file for the tested version
 and the licensing terms.
-
-
-Running the Python script
+<br>
+<br>
+## Running the Python script
 
 - Python 3.13.12 (the build is pinned to this version)
 - Python packages:
@@ -65,13 +67,13 @@ Running the Python script
 
 Then run:
 
-    python "MP3 Album Image Correction for Pioneer (500x500jpg).py"
+    python "MP3 Album Image Correction for Pioneer.py"
 
 Drag in some MP3s or folders (or use Add Files / Add Folder), change any options
 you want, and click Process.
-
-
-Building the .exe
+<br>
+<br>
+## Building the .exe
 
 The build produces a single self-contained .exe with ffmpeg bundled inside.
 
@@ -87,9 +89,9 @@ The finished .exe lands in the dist folder. The build script creates a venv,
 installs the pinned dependencies from requirements.txt, ensures ffmpeg is in
 bin, and runs PyInstaller with the right options (windowed, tkinter and
 tkinterdnd2 collected, ffmpeg and icon bundled, version info embedded).
-
-
-Notes
+<br>
+<br>
+## Notes
 
 - Every run writes a timestamped log to a "logs" folder created next to the
   app (for the built exe, next to the .exe; when run as a script, next to the
@@ -102,9 +104,9 @@ Notes
   never re-encoded, so sound quality is untouched. Only the artwork gets
   resized or converted. Turn on "Keep .bak backup" if you want a safety copy.
 - Only the first embedded image in each file is processed.
-
-
-License
+<br>
+<br>
+## License
 
 MIT License. Created by Mr5niper. See the LICENSE file. Bundled ffmpeg is
 licensed separately under the LGPL; see NOTICE.

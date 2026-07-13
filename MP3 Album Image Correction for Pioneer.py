@@ -804,6 +804,39 @@ class App:
                                  "Install: pip install " + " ".join(missing))
             return
 
+        # Warn if any cover-affecting setting differs from the Pioneer spec
+        # (500px, JPEG quality 90, PNG converted to JPEG). Anything off-spec,
+        # in either direction, risks artwork the deck won't display. The other
+        # options (scan subfolders, keep backup) don't affect the cover, so
+        # they don't trigger this.
+        size = int(self.max_size.get())
+        quality = int(self.quality.get())
+        force_jpeg = bool(self.force_jpeg.get())
+        off_spec = []
+        if size != 500:
+            off_spec.append(
+                f'- "Max size (px)" is {size}. The tested value is 500. '
+                f'Set it back in the box at the top left.')
+        if quality != 90:
+            off_spec.append(
+                f'- "JPEG quality" is {quality}. The tested value is 90. '
+                f'Set it back with the slider at the top.')
+        if not force_jpeg:
+            off_spec.append(
+                '- "Force PNG to JPEG" is off. Pioneer gear expects JPEG '
+                'covers; PNG artwork may not display. Turn it back on.')
+        if off_spec:
+            msg = (
+                "One or more settings differ from the values tested to work "
+                "on Pioneer CDJ hardware:\n\n"
+                + "\n\n".join(off_spec)
+                + "\n\nAnything off-spec may load slowly or not show up at all "
+                  "on the deck. You can set these back and try again, or "
+                  "continue with the current settings.\n\n"
+                  "Continue with the current settings?")
+            if not messagebox.askyesno("Settings differ from the Pioneer spec", msg):
+                return
+
         # reset statuses
         for iid, info in self.rows.items():
             info["status"] = "queued"

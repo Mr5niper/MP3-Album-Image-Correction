@@ -438,7 +438,7 @@ class App:
         self.cancel_flag = threading.Event()
         self.rows = {}          # iid -> {"path":..., "status":...}
 
-        root.title("MP3 Album Art Corrector — Pioneer 500×500")
+        root.title("MP3 Album Art Correction for Pioneer  v1.0.0.0")
         # Apply the icon to the whole app: title bar, taskbar button, and every
         # child dialog (messageboxes, file dialogs) inherits it via default=.
         apply_window_icon(root, as_default=True)

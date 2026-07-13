@@ -6,8 +6,8 @@ setlocal enabledelayedexpansion
 :: ==========================================================================
 set "REQUIRED_PYTHON_VERSION=3.13.12"
 set "PYTHON_DOWNLOAD_URL=https://www.python.org/downloads/release/python-31312/"
-set "APP_NAME=MP3 Album Image Correction for Pioneer (500x500jpg)"
-set "SCRIPT_NAME=MP3 Album Image Correction for Pioneer (500x500jpg).py"
+set "APP_NAME=MP3 Album Image Correction for Pioneer"
+set "SCRIPT_NAME=MP3 Album Image Correction for Pioneer.py"
 
 :: ffmpeg: if .\bin\ffmpeg.exe is missing, the build downloads the current
 :: LGPL "latest" build from BtbN and extracts ffmpeg.exe into .\bin.

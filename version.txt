@@ -25,7 +25,7 @@ VSVersionInfo(
             StringStruct(u'FileDescription', u'Resize MP3 album art to 500px and convert PNG covers to JPEG for Pioneer'),
             StringStruct(u'FileVersion', u'1.0.0.0'),
             StringStruct(u'InternalName', u'MP3-Album-Image-Correction'),
-            StringStruct(u'OriginalFilename', u'MP3 Album Image Correction for Pioneer (500x500jpg).exe'),
+            StringStruct(u'OriginalFilename', u'MP3 Album Image Correction for Pioneer.exe'),
             StringStruct(u'ProductName', u'MP3 Album Image Correction'),
             StringStruct(u'ProductVersion', u'1.0.0.0')
           ]

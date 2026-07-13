@@ -154,6 +154,97 @@ def apply_window_icon(win, as_default=False):
         pass
 
 
+def _exe_dir():
+    """Directory of the running program, for placing the logs folder.
+
+    Unlike _app_base_dir(), this is the folder that actually contains the exe
+    the user launched (sys.executable when frozen) — NOT sys._MEIPASS, which is
+    a temp extraction dir that gets deleted on exit. When run as a plain script,
+    it's the folder the script lives in.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_logs_dir():
+    """Return a writable 'logs' folder next to the exe, creating it if needed.
+
+    Preference:
+      1. A 'logs' folder beside the exe (portable — logs live with the app).
+      2. If that location isn't writable (e.g. the app sits in Program Files),
+         fall back to a per-user location so logging still works.
+    Returns the folder path, or None if no writable location could be made.
+    """
+    candidates = [os.path.join(_exe_dir(), "logs")]
+    # Per-user fallback for protected install locations.
+    if sys.platform.startswith("win"):
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        candidates.append(os.path.join(base, "MP3AlbumImageCorrection", "logs"))
+    else:
+        candidates.append(os.path.join(os.path.expanduser("~"),
+                                       ".mp3-album-image-correction", "logs"))
+    for folder in candidates:
+        try:
+            os.makedirs(folder, exist_ok=True)
+            # Confirm we can actually write here.
+            probe = os.path.join(folder, ".writetest")
+            with open(probe, "w", encoding="utf-8") as f:
+                f.write("")
+            os.remove(probe)
+            return folder
+        except Exception:
+            continue
+    return None
+
+
+class RunLogger:
+    """Simple per-run logger that writes a timestamped file into the logs folder.
+
+    Mirrors the original CLI behavior: a fresh resize_album_art_<timestamp>.log
+    per run, holding per-file results and an end-of-run summary. Best-effort —
+    if the folder isn't writable, it silently does nothing so the app still runs.
+    """
+
+    def __init__(self):
+        self.path = None
+        self._fh = None
+        folder = get_logs_dir()
+        if not folder:
+            return
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.path = os.path.join(folder, f"resize_album_art_{stamp}.log")
+        try:
+            self._fh = open(self.path, "a", encoding="utf-8")
+        except Exception:
+            self._fh = None
+            self.path = None
+
+    def _write(self, level, msg):
+        if not self._fh:
+            return
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            self._fh.write(f"{ts} - {level} - {msg}\n")
+            self._fh.flush()
+        except Exception:
+            pass
+
+    def info(self, msg):
+        self._write("INFO", msg)
+
+    def error(self, msg):
+        self._write("ERROR", msg)
+
+    def close(self):
+        if self._fh:
+            try:
+                self._fh.close()
+            except Exception:
+                pass
+            self._fh = None
+
+
 def get_ffmpeg_path():
     """Return a usable ffmpeg command.
 
@@ -752,16 +843,52 @@ class App:
         self.result_lbl.config(text="Cancelling…")
 
     def _run_worker(self, items, opts):
+        logger = RunLogger()
+        started = datetime.now()
+        logger.info(f"Run started: {len(items)} file(s) queued")
+        logger.info("Options: max_size={max_size} force_jpeg={force_jpeg} "
+                    "quality={quality} keep_backup={keep_backup}".format(**opts))
         stats = {"passed": 0, "skipped": 0, "failed": 0}
-        for idx, (iid, info) in enumerate(items, start=1):
-            if self.cancel_flag.is_set():
-                self.msg_q.put(("done", stats, True))
-                return
-            self.msg_q.put(("working", iid))
-            status, detail = process_mp3(info["path"], **opts)
-            stats[status] = stats.get(status, 0) + 1
-            self.msg_q.put(("result", iid, status, detail, idx))
-        self.msg_q.put(("done", stats, False))
+        failed_files = []
+        log_path = logger.path
+        try:
+            for idx, (iid, info) in enumerate(items, start=1):
+                if self.cancel_flag.is_set():
+                    logger.info("Run cancelled by user")
+                    self._log_summary(logger, stats, failed_files, started, cancelled=True)
+                    logger.close()
+                    self.msg_q.put(("done", stats, True, log_path))
+                    return
+                self.msg_q.put(("working", iid))
+                status, detail = process_mp3(info["path"], **opts)
+                stats[status] = stats.get(status, 0) + 1
+                if status == "failed":
+                    failed_files.append((info["path"], detail or ""))
+                    logger.error(f"{info['path']} -> {detail}")
+                else:
+                    logger.info(f"[{status}] {info['path']}"
+                                + (f" ({detail})" if detail else ""))
+                self.msg_q.put(("result", iid, status, detail, idx))
+            self._log_summary(logger, stats, failed_files, started, cancelled=False)
+        finally:
+            logger.close()
+        self.msg_q.put(("done", stats, False, log_path))
+
+    def _log_summary(self, logger, stats, failed_files, started, cancelled):
+        elapsed = datetime.now() - started
+        total = stats.get("passed", 0) + stats.get("skipped", 0) + stats.get("failed", 0)
+        if failed_files:
+            logger.info("Failures:")
+            for path, reason in failed_files:
+                logger.error(f"  {path} -> {reason}")
+        logger.info(
+            "Summary: "
+            f"scanned={total} "
+            f"updated={stats.get('passed', 0)} "
+            f"skipped={stats.get('skipped', 0)} "
+            f"failed={stats.get('failed', 0)} "
+            f"elapsed={elapsed} "
+            f"{'(cancelled)' if cancelled else ''}".rstrip())
 
     def _pump_queue(self):
         try:
@@ -783,19 +910,22 @@ class App:
                                        tags=(status,))
                     self.progress["value"] = idx
                 elif kind == "done":
-                    stats, cancelled = msg[1], msg[2]
-                    self._finish(stats, cancelled)
+                    stats, cancelled, log_path = msg[1], msg[2], msg[3]
+                    self._finish(stats, cancelled, log_path)
         except queue.Empty:
             pass
         self.root.after(80, self._pump_queue)
 
-    def _finish(self, stats, cancelled):
+    def _finish(self, stats, cancelled, log_path=None):
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
+        self._last_log_path = log_path
         verb = "Cancelled" if cancelled else "Done"
-        self.result_lbl.config(
-            text=f"{verb} — {stats.get('passed',0)} updated · "
-                 f"{stats.get('skipped',0)} skipped · {stats.get('failed',0)} failed")
+        summary = (f"{verb} — {stats.get('passed',0)} updated · "
+                   f"{stats.get('skipped',0)} skipped · {stats.get('failed',0)} failed")
+        if log_path:
+            summary += "  ·  log saved"
+        self.result_lbl.config(text=summary)
 
     # ----------------------------------------------------------------- misc --
     def export_log(self):

@@ -35,6 +35,8 @@ env/
 Thumbs.db
 
 # ---- Tool output ----
+# Auto-created logs folder (one timestamped file per run), next to the exe.
+logs/
 # Timestamped logs written by the app.
 resize_album_art_*.log
 album_art_*.log

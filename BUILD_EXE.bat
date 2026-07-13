@@ -9,6 +9,20 @@ set "PYTHON_DOWNLOAD_URL=https://www.python.org/downloads/release/python-31312/"
 set "APP_NAME=MP3 Album Image Correction for Pioneer (500x500jpg)"
 set "SCRIPT_NAME=MP3 Album Image Correction for Pioneer (500x500jpg).py"
 
+:: ffmpeg: if .\bin\ffmpeg.exe is missing, the build downloads the current
+:: LGPL "latest" build from BtbN and extracts ffmpeg.exe into .\bin.
+:: FFMPEG_TESTED_ZIP_SHA256 is the SHA-256 of the downloaded ZIP (as published on
+:: the BtbN release page) for the build this project was tested with - it is
+:: the archive's hash. FFMPEG_TESTED_EXE_SHA256 is the hash of the ffmpeg.exe
+:: extracted from that archive (the actual bundled binary), for traceability.
+:: The BtbN "latest" URL always serves the newest build, so a downloaded copy
+:: may hash differently; that is allowed - the build just warns that it is a
+:: newer, untested version and continues. Update the value below (and NOTICE)
+:: when you validate a newer build.
+set "FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
+set "FFMPEG_TESTED_ZIP_SHA256=a61ef31877b5a8c554638d136f6f3f5451659fccbbf31dd9bd9b5d1e56a824a5"
+set "FFMPEG_TESTED_EXE_SHA256=7b355a9c9ad772d06fe99b5fe2cd3fdd170002967de2f9dc5c7dc80e8cff870d"
+
 :: ==========================================================================
 :: Pre-flight Check: Verify Python Version
 :: ==========================================================================
@@ -35,25 +49,85 @@ if "!CURRENT_PYTHON_VERSION!" neq "%REQUIRED_PYTHON_VERSION%" (
 )
 
 :: ==========================================================================
-:: Pre-flight Check: Verify bundled ffmpeg is present
+:: Pre-flight Check: Ensure a bundled ffmpeg is available
 :: ==========================================================================
 :: The app calls ffmpeg to re-embed the artwork. This build bundles it so the
-:: finished .exe is self-contained. Place an ffmpeg.exe at .\bin\ffmpeg.exe
-:: before building. Use an LGPL build (not a GPL or "nonfree" build) so the
-:: release stays redistributable - see NOTICE for the attribution terms.
-if not exist ".\bin\ffmpeg.exe" (
-    echo.
-    echo [ERROR] Missing .\bin\ffmpeg.exe
-    echo.
-    echo This build bundles ffmpeg into the executable, but no ffmpeg.exe was
-    echo found at .\bin\ffmpeg.exe. Create a 'bin' folder next to this script
-    echo and put an ffmpeg.exe inside it, then run the build again.
-    echo.
-    echo [TIP] Use an LGPL "shared" or "essentials" ffmpeg build to keep the
-    echo       release legally redistributable. See NOTICE for details.
+:: finished .exe is self-contained.
+::
+:: Behavior:
+::   - If .\bin\ffmpeg.exe already exists, use it as-is (your tested copy).
+::   - Otherwise, download the current LGPL "latest" build from BtbN, extract
+::     ffmpeg.exe into .\bin, and check its SHA-256 against the tested value.
+::       * match    -> tested build, proceed quietly.
+::       * mismatch -> a NEWER, untested build. Warn and continue anyway.
+:: LGPL is used (not GPL/nonfree) so the release stays redistributable. See
+:: NOTICE for the attribution terms.
+if exist ".\bin\ffmpeg.exe" (
+    echo [INFO] Using existing .\bin\ffmpeg.exe - it will be bundled into the app.
+    goto :ffmpeg_ready
+)
+
+echo [INFO] No .\bin\ffmpeg.exe found - downloading the latest LGPL build from BtbN...
+if not exist ".\bin" mkdir ".\bin"
+
+set "FFMPEG_ZIP=%TEMP%\ffmpeg-latest-win64-lgpl.zip"
+
+:: Download the zip. $ProgressPreference is silenced because Invoke-WebRequest's
+:: progress UI is very slow and prints a large, misleading byte counter.
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%FFMPEG_URL%' -OutFile '%FFMPEG_ZIP%' -UseBasicParsing } catch { Write-Host $_.Exception.Message; exit 1 }"
+if errorlevel 1 (
+    echo [ERROR] Failed to download ffmpeg from:
+    echo         %FFMPEG_URL%
+    echo Check your internet connection, or manually place an LGPL ffmpeg.exe
+    echo at .\bin\ffmpeg.exe and run the build again.
     goto :error
 )
-echo [INFO] Found .\bin\ffmpeg.exe - it will be bundled into the app.
+
+:: Verify SHA-256 of the DOWNLOADED ZIP against the tested value. (The recorded
+:: hash is the zip's hash, as published on the BtbN release page - not the hash
+:: of the ffmpeg.exe inside it.)
+for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command "(Get-FileHash '%FFMPEG_ZIP%' -Algorithm SHA256).Hash.ToLower()"`) do set "FFMPEG_GOT_ZIP_SHA256=%%H"
+
+echo [INFO] Tested zip SHA-256:     %FFMPEG_TESTED_ZIP_SHA256%
+echo [INFO] Downloaded zip SHA-256: %FFMPEG_GOT_ZIP_SHA256%
+if /i "%FFMPEG_GOT_ZIP_SHA256%"=="%FFMPEG_TESTED_ZIP_SHA256%" (
+    echo [INFO] ffmpeg archive matches the tested build.
+) else (
+    echo.
+    echo [WARNING] The downloaded ffmpeg is a NEWER, UNTESTED build than the one
+    echo           this project was validated against. The build will continue
+    echo           using it. If you distribute the result, update the recorded
+    echo           version and SHA-256 values in NOTICE to match what you shipped,
+    echo           and keep the FFmpeg source link current. See NOTICE for details.
+    echo.
+)
+
+:: Extract ONLY bin\ffmpeg.exe from the zip (the archive is ~350 MB unpacked;
+:: we need just the one ~114 MB exe). The entry is at
+:: <top-folder>/bin/ffmpeg.exe, so match any entry ending in bin/ffmpeg.exe.
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip=[System.IO.Compression.ZipFile]::OpenRead('%FFMPEG_ZIP%'); $entry=$zip.Entries | Where-Object { $_.FullName -match 'bin/ffmpeg\.exe$' } | Select-Object -First 1; if ($null -eq $entry) { $zip.Dispose(); Write-Host 'ffmpeg.exe not found in archive'; exit 1 }; [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, '.\bin\ffmpeg.exe', $true); $zip.Dispose() } catch { Write-Host $_.Exception.Message; exit 1 }"
+if errorlevel 1 (
+    echo [ERROR] Could not extract ffmpeg.exe from the downloaded archive.
+    goto :error
+)
+
+:: Report the SHA-256 of the extracted ffmpeg.exe (the actual bundled binary).
+:: This is recorded in NOTICE alongside the zip hash for full traceability.
+for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command "(Get-FileHash '.\bin\ffmpeg.exe' -Algorithm SHA256).Hash.ToLower()"`) do set "FFMPEG_GOT_EXE_SHA256=%%H"
+echo [INFO] Tested exe SHA-256:     %FFMPEG_TESTED_EXE_SHA256%
+echo [INFO] Extracted exe SHA-256:  %FFMPEG_GOT_EXE_SHA256%
+if /i "%FFMPEG_GOT_EXE_SHA256%"=="%FFMPEG_TESTED_EXE_SHA256%" (
+    echo [INFO] Bundled ffmpeg.exe matches the tested binary.
+) else (
+    echo [WARNING] Bundled ffmpeg.exe differs from the tested binary. If you
+    echo           distribute this build, record this exe SHA-256 in NOTICE.
+)
+
+:: Clean up temp download artifact (best-effort)
+if exist "%FFMPEG_ZIP%" del /q "%FFMPEG_ZIP%" >nul 2>&1
+
+:ffmpeg_ready
+echo [INFO] ffmpeg is ready at .\bin\ffmpeg.exe
 
 :: ==========================================================================
 :: Build Script for %APP_NAME%

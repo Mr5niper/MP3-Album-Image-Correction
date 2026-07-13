@@ -30,8 +30,8 @@ Features
 
 ffmpeg
 
-The app uses ffmpeg to re-embed the artwork. It looks for ffmpeg in two places,
-in this order:
+The app uses ffmpeg to re-embed the artwork. At runtime it looks for ffmpeg in
+two places, in this order:
 
   1. A bundled copy at bin\ffmpeg.exe next to the app (the built .exe ships
      with this).
@@ -41,6 +41,14 @@ in this order:
 So the built .exe is self-contained and needs nothing installed. If you run the
 raw Python script instead, either drop an ffmpeg.exe in a bin folder next to it
 or have ffmpeg on your PATH.
+
+The build gets ffmpeg automatically: if bin\ffmpeg.exe is missing, BUILD_EXE.bat
+downloads the current LGPL build from BtbN and extracts ffmpeg.exe into bin.
+Because BtbN's "latest" always serves the newest build, a fresh build may get a
+newer ffmpeg than the one this project was tested with; the build prints a
+warning when that happens but still continues. Only an LGPL build is used, so
+the result stays redistributable. See the NOTICE file for the tested version
+and the licensing terms.
 
 
 Running the Python script
@@ -68,16 +76,17 @@ Building the .exe
 The build produces a single self-contained .exe with ffmpeg bundled inside.
 
 1. Install Python 3.13.12 and add it to PATH.
-2. Put an ffmpeg.exe at bin\ffmpeg.exe next to BUILD_EXE.bat. Use an LGPL build
-   (not a GPL or nonfree build) so the release stays redistributable. See the
-   NOTICE file for details.
+2. ffmpeg: if you already have a tested bin\ffmpeg.exe, leave it in place and
+   the build uses it. Otherwise the build downloads the current LGPL build from
+   BtbN automatically. (It uses an LGPL build so the release stays
+   redistributable; see NOTICE.)
 3. Optional: put an icon.ico next to BUILD_EXE.bat to set the app icon.
 4. Double-click BUILD_EXE.bat.
 
 The finished .exe lands in the dist folder. The build script creates a venv,
-installs the pinned dependencies from requirements.txt, and runs PyInstaller
-with the right options (windowed, tkinter and tkinterdnd2 collected, ffmpeg and
-icon bundled, version info embedded).
+installs the pinned dependencies from requirements.txt, ensures ffmpeg is in
+bin, and runs PyInstaller with the right options (windowed, tkinter and
+tkinterdnd2 collected, ffmpeg and icon bundled, version info embedded).
 
 
 Notes

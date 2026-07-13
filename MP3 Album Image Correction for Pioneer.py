@@ -481,7 +481,7 @@ class App:
         self.cancel_flag = threading.Event()
         self.rows = {}          # iid -> {"path":..., "status":...}
 
-        root.title("MP3 Album Art Correction for Pioneer  v1.0.0.0")
+        root.title("MP3 Album Art Correction for Pioneer  v1.1.0.0")
         # default=True so the title bar, taskbar, and dialogs all use the icon
         apply_window_icon(root, as_default=True)
         root.geometry("980x680")

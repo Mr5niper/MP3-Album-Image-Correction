@@ -4,7 +4,7 @@ A desktop app that resizes embedded MP3 album art to a max size (default 500px)
 and converts PNG covers to JPEG so they show up correctly on Pioneer CDJ gear
 and in rekordbox.
 
-<img width="1424" height="1069" alt="image" src="https://github.com/user-attachments/assets/409ab5eb-50c3-4b74-9d4d-6cf217e756ca" />
+<img width="1429" height="1073" alt="image" src="https://github.com/user-attachments/assets/bba28b50-c1d1-47f3-b88a-d70d7a608028" />
 <br>
 <br>
 

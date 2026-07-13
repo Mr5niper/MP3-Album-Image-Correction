@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
 """
-MP3 Album Art Corrector — GUI Edition
-=====================================
-A desktop GUI wrapper around the original "MP3 Album Image Correction for
-Pioneer (500x500 jpg)" script.
+MP3 Album Image Correction for Pioneer
 
-Resizes embedded MP3 album art to a max dimension (default 500 px) and converts
-PNG covers to JPEG so they play nicely with Pioneer CDJ / rekordbox hardware.
+Resizes embedded MP3 album art down to a max dimension (500px by default) and
+converts PNG covers to JPEG, so the artwork shows up correctly on Pioneer CDJ
+gear and in rekordbox. The audio is copied through untouched; only the artwork
+is changed.
 
-Features
---------
-* Drag & drop MP3 files or whole folders onto the window (needs tkinterdnd2;
-  falls back gracefully to buttons if it isn't installed).
-* Add Files / Add Folder buttons + paste-from-clipboard (Ctrl+V).
-* A reorderable queue with per-file status, remove / clear, right-click menu.
-* Adjustable max size, recursive-scan toggle, "force JPEG" toggle,
-  "keep backup (.bak)" toggle, JPEG quality slider.
-* Live progress bar, running counters, and a searchable results log.
-* Runs the heavy work on a background thread so the UI never freezes.
-* Export the log to a .txt / .log file.
+What it does:
+- Drag and drop MP3 files or folders onto the window (needs tkinterdnd2; if
+  that's not installed you use the buttons instead).
+- Add Files / Add Folder buttons and paste paths with Ctrl+V.
+- A queue with per-file status, remove, and clear, plus a right-click menu.
+- Options for max size, JPEG quality, force PNG to JPEG, scan subfolders, and
+  keeping a .bak backup.
+- Progress bar and running counts.
+- Processing runs on a background thread so the window stays responsive.
+- Every run writes a log, and you can also export it from the File menu.
 
-Requirements
-------------
+Requirements:
     pip install mutagen pillow tkinterdnd2
 
-ffmpeg is used to re-embed the artwork. The app looks for a bundled copy at
-'bin/ffmpeg.exe' next to it first, and otherwise falls back to ffmpeg on the
-system PATH.
+ffmpeg does the re-embedding. The app uses a bundled bin/ffmpeg.exe next to it
+if present, otherwise ffmpeg on the system PATH.
 
-tkinterdnd2 is OPTIONAL — the app still works without it, you just lose the
-drag-and-drop surface (everything else remains).
+tkinterdnd2 is optional. Without it you lose drag and drop but nothing else.
 """
 
 import os
@@ -45,13 +40,13 @@ from io import BytesIO
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# On Windows, a --windowed (no-console) build would otherwise flash a black
-# console window for every ffmpeg call. CREATE_NO_WINDOW suppresses that.
-# On macOS/Linux this flag doesn't exist, so it stays 0 (a harmless no-op).
+# On a --windowed build, Windows pops up a console window for every ffmpeg
+# call unless we pass CREATE_NO_WINDOW. The flag only exists on Windows, so
+# elsewhere it stays 0 and does nothing.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
 
 # ----------------------------------------------------------------------------
-# Optional / graceful dependency handling
+# Optional imports
 # ----------------------------------------------------------------------------
 try:
     from PIL import Image
@@ -99,14 +94,13 @@ STATUS_COLORS = {
 
 
 # ----------------------------------------------------------------------------
-# Core image / mp3 logic (ported from the original script)
+# Core image / mp3 logic
 # ----------------------------------------------------------------------------
 def _app_base_dir():
     """Folder to look in for a bundled ffmpeg.
 
-    When frozen by PyInstaller (one-file), bundled data lives in a temp dir
-    exposed as sys._MEIPASS. When run as a normal script, it's the folder the
-    script lives in.
+    When frozen (one-file build), bundled files are unpacked to sys._MEIPASS.
+    Run as a script, it's the folder this file is in.
     """
     if getattr(sys, "frozen", False):
         return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
@@ -114,20 +108,19 @@ def _app_base_dir():
 
 
 def resource_path(name):
-    """Locate a bundled resource file (e.g. the app icon).
+    """Path to a bundled resource such as the icon.
 
-    When frozen by PyInstaller, resources are extracted to sys._MEIPASS. When
-    run as a normal script, they sit next to this file. Returns the full path.
+    Looks in sys._MEIPASS when frozen, otherwise next to this file.
     """
     base = getattr(sys, "_MEIPASS", None) or _app_base_dir()
     return os.path.join(base, name)
 
 
 def _icon_path():
-    """Full path to the app icon if it exists and we're on Windows, else None.
+    """Path to the app icon on Windows if it exists, otherwise None.
 
-    .ico is a Windows format; iconbitmap expects it there. On other platforms we
-    skip it so we don't raise.
+    .ico is a Windows format, so we only bother on Windows. Returning None
+    when there's no icon lets callers skip setting one.
     """
     if not sys.platform.startswith("win"):
         return None
@@ -136,11 +129,11 @@ def _icon_path():
 
 
 def apply_window_icon(win, as_default=False):
-    """Set the icon on a Tk window/dialog. Best-effort; never raises.
+    """Set the window icon. Does nothing if there's no icon.
 
-    as_default=True (used once on the root) applies the icon to the whole
-    application, so the title bar, the taskbar button, and every child dialog
-    (messageboxes, file dialogs, Toplevels) inherit it.
+    Pass as_default=True once on the root window. That makes the title bar,
+    the taskbar button, and any dialogs (message boxes, file dialogs) use the
+    icon too. Wrapped in try/except because a bad icon shouldn't crash the app.
     """
     path = _icon_path()
     if not path:
@@ -155,12 +148,12 @@ def apply_window_icon(win, as_default=False):
 
 
 def _exe_dir():
-    """Directory of the running program, for placing the logs folder.
+    """Folder that contains the running program, for the logs folder.
 
-    Unlike _app_base_dir(), this is the folder that actually contains the exe
-    the user launched (sys.executable when frozen) — NOT sys._MEIPASS, which is
-    a temp extraction dir that gets deleted on exit. When run as a plain script,
-    it's the folder the script lives in.
+    This is different from _app_base_dir(): when frozen we want the folder
+    holding the actual exe (sys.executable), not sys._MEIPASS, since _MEIPASS
+    is a temp folder that gets wiped when the app exits. Run as a script, it's
+    the script's own folder.
     """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -168,13 +161,11 @@ def _exe_dir():
 
 
 def get_logs_dir():
-    """Return a writable 'logs' folder next to the exe, creating it if needed.
+    """Return a writable 'logs' folder, creating it if needed.
 
-    Preference:
-      1. A 'logs' folder beside the exe (portable — logs live with the app).
-      2. If that location isn't writable (e.g. the app sits in Program Files),
-         fall back to a per-user location so logging still works.
-    Returns the folder path, or None if no writable location could be made.
+    First choice is a 'logs' folder next to the exe so logs travel with the
+    app. If that can't be written (say the app is in Program Files), fall back
+    to a per-user folder. Returns None if neither can be created.
     """
     candidates = [os.path.join(_exe_dir(), "logs")]
     # Per-user fallback for protected install locations.
@@ -199,11 +190,11 @@ def get_logs_dir():
 
 
 class RunLogger:
-    """Simple per-run logger that writes a timestamped file into the logs folder.
+    """Writes one timestamped log file per run into the logs folder.
 
-    Mirrors the original CLI behavior: a fresh resize_album_art_<timestamp>.log
-    per run, holding per-file results and an end-of-run summary. Best-effort —
-    if the folder isn't writable, it silently does nothing so the app still runs.
+    Each run gets its own resize_album_art_<timestamp>.log with the per-file
+    results and a summary at the end. If the logs folder can't be written, it
+    just skips logging rather than stopping the run.
     """
 
     def __init__(self):
@@ -246,13 +237,11 @@ class RunLogger:
 
 
 def get_ffmpeg_path():
-    """Return a usable ffmpeg command.
+    """Find ffmpeg: bundled copy first, then PATH.
 
-    Preference order:
-      1. A bundled binary at <base>/bin/ffmpeg(.exe)  (shipped with the app)
-      2. ffmpeg found on the system PATH
-    Returns the full path to the bundled binary if present, otherwise the bare
-    name "ffmpeg" (resolved via PATH by the OS), or None if nothing is found.
+    Checks bin/ffmpeg(.exe) next to the app and uses it if it's there.
+    Otherwise falls back to ffmpeg on PATH. Returns the path, or None if
+    neither turns up.
     """
     exe = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"
     bundled = os.path.join(_app_base_dir(), "bin", exe)
@@ -439,8 +428,7 @@ class App:
         self.rows = {}          # iid -> {"path":..., "status":...}
 
         root.title("MP3 Album Art Correction for Pioneer  v1.0.0.0")
-        # Apply the icon to the whole app: title bar, taskbar button, and every
-        # child dialog (messageboxes, file dialogs) inherits it via default=.
+        # default=True so the title bar, taskbar, and dialogs all use the icon
         apply_window_icon(root, as_default=True)
         root.geometry("980x680")
         root.minsize(820, 560)
@@ -978,10 +966,9 @@ class App:
 def _set_win_app_id():
     """Give the app its own taskbar identity on Windows.
 
-    Without an explicit AppUserModelID, Windows may group the window under the
-    Python/pythonw host and show its icon in the taskbar instead of ours. Setting
-    a distinct ID makes the taskbar use this app's own icon. Best-effort no-op
-    elsewhere or on failure.
+    Without this, Windows lumps the window in with the Python host and shows
+    Python's icon on the taskbar instead of ours. Setting an AppUserModelID
+    fixes that. Windows only; if the call fails it's not worth crashing over.
     """
     if not sys.platform.startswith("win"):
         return

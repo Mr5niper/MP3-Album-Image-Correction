@@ -7,6 +7,7 @@ and in rekordbox.
 <img width="1424" height="1069" alt="image" src="https://github.com/user-attachments/assets/409ab5eb-50c3-4b74-9d4d-6cf217e756ca" />
 <br>
 <br>
+
 ## Features
 
 - Drag and drop MP3 files or whole folders onto the window (needs tkinterdnd2,
@@ -30,6 +31,7 @@ and in rekordbox.
   something is missing instead of crashing.
 <br> 
 <br>
+
 ## ffmpeg
 
 The app uses ffmpeg to re-embed the artwork. At runtime it looks for ffmpeg in
@@ -53,6 +55,7 @@ the result stays redistributable. See the NOTICE file for the tested version
 and the licensing terms.
 <br>
 <br>
+
 ## Running the Python script
 
 - Python 3.13.12 (the build is pinned to this version)
@@ -73,6 +76,7 @@ Drag in some MP3s or folders (or use Add Files / Add Folder), change any options
 you want, and click Process.
 <br>
 <br>
+
 ## Building the .exe
 
 The build produces a single self-contained .exe with ffmpeg bundled inside.
@@ -91,6 +95,7 @@ bin, and runs PyInstaller with the right options (windowed, tkinter and
 tkinterdnd2 collected, ffmpeg and icon bundled, version info embedded).
 <br>
 <br>
+
 ## Notes
 
 - Every run writes a timestamped log to a "logs" folder created next to the
@@ -106,6 +111,7 @@ tkinterdnd2 collected, ffmpeg and icon bundled, version info embedded).
 - Only the first embedded image in each file is processed.
 <br>
 <br>
+
 ## License
 
 MIT License. Created by Mr5niper. See the LICENSE file. Bundled ffmpeg is

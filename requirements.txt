@@ -1,0 +1,20 @@
+# Build-time and runtime requirements for MP3 Album Image Correction.
+#
+# Versions are frozen to a known-good build on Python 3.13.12 (Windows).
+# The app needs Pillow and mutagen at runtime; tkinterdnd2 enables the
+# drag-and-drop surface. PyInstaller (and its hooks) are only needed to
+# build the .exe.
+#
+# ffmpeg is NOT a Python package and is not installed by pip. This build
+# bundles it: place an LGPL ffmpeg.exe at .\bin\ffmpeg.exe before building
+# (see NOTICE for licensing). The app falls back to ffmpeg on PATH if no
+# bundled copy is present.
+
+# ---- Runtime dependencies ----
+pillow==12.3.0
+mutagen==1.48.1
+tkinterdnd2==0.6.2
+
+# ---- Build-time only (PyInstaller) ----
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6

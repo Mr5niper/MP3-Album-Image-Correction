@@ -1,0 +1,37 @@
+# UTF-8
+#
+# Windows version resource for MP3 Album Image Correction, passed to
+# PyInstaller via --version-file. Edit the four numbers in filevers/prodvers
+# and the FileVersion/ProductVersion strings to bump the version, then rebuild.
+#
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040904B0',
+          [
+            StringStruct(u'CompanyName', u'Mr5niper'),
+            StringStruct(u'FileDescription', u'Resize MP3 album art to 500px and convert PNG covers to JPEG for Pioneer'),
+            StringStruct(u'FileVersion', u'1.0.0.0'),
+            StringStruct(u'InternalName', u'MP3-Album-Image-Correction'),
+            StringStruct(u'OriginalFilename', u'MP3 Album Image Correction for Pioneer (500x500jpg).exe'),
+            StringStruct(u'ProductName', u'MP3 Album Image Correction'),
+            StringStruct(u'ProductVersion', u'1.0.0.0')
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)

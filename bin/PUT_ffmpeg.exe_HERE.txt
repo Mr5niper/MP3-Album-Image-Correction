@@ -1,0 +1,6 @@
+Put an LGPL build of ffmpeg.exe in this folder (as: ffmpeg.exe) before running
+BUILD_EXE.bat. Use an LGPL "shared" or "essentials" build - NOT a GPL or
+"nonfree" build - so the release stays redistributable. See the NOTICE file in
+the project root for details. Then delete this placeholder if you like.
+
+(https://github.com/btbn/ffmpeg-builds/releases)
